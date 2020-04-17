@@ -241,9 +241,9 @@ namespace Ryujinx.HLE.HOS.Services.Mii.Types
             return SpanHelpers.AsByteSpan(ref this);
         }
 
-        public ReadOnlySpan<byte> AsReadOnlySpan()
+        public readonly ReadOnlySpan<byte> AsReadOnlySpan()
         {
-            return SpanHelpers.AsReadOnlyByteSpan(ref this);
+            return SpanHelpers.AsReadOnlyByteSpan(in this);
         }
 
         private ReadOnlySpan<byte> AsSpanWithoutCrc()
