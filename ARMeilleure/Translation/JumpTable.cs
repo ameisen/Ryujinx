@@ -72,7 +72,7 @@ namespace ARMeilleure.Translation
         public void RegisterFunction(ulong address, TranslatedFunction func) {
             address &= ~3UL;
             _targets.AddOrUpdate(address, func, (key, oldFunc) => func);
-            long funcPtr = func.GetPointer().ToInt64();
+            long funcPtr = func.Pointer.ToInt64();
 
             // Update all jump table entries that target this address.
             LinkedList<int> myDependants;
@@ -128,7 +128,7 @@ namespace ARMeilleure.Translation
             TranslatedFunction func;
             if (_targets.TryGetValue((ulong)address, out func))
             {
-                value = func.GetPointer().ToInt64();
+                value = func.Pointer.ToInt64();
             }
 
             // Make sure changes to the function at the target address update this jump table entry.

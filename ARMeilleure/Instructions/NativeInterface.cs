@@ -388,13 +388,13 @@ namespace ARMeilleure.Instructions
         public static ulong GetFunctionAddress(ulong address)
         {
             TranslatedFunction function = _context.Translator.GetOrTranslate(address, GetContext().ExecutionMode);
-            return (ulong)function.GetPointer().ToInt64();
+            return (ulong)function.Pointer.ToInt64();
         }
 
         public static ulong GetIndirectFunctionAddress(ulong address, ulong entryAddress)
         {
             TranslatedFunction function = _context.Translator.GetOrTranslate(address, GetContext().ExecutionMode);
-            ulong ptr = (ulong)function.GetPointer().ToInt64();
+            ulong ptr = (ulong)function.Pointer.ToInt64();
             if (function.HighCq)
             {
                 // Rewrite the host function address in the table to point to the highCq function.

@@ -6,19 +6,16 @@ using System.Runtime.InteropServices;
 namespace Ryujinx.Common.Utilities
 {
     [DebuggerDisplay("{ToString()}")]
-    [StructLayout(LayoutKind.Sequential, Size = 16)]
+    [StructLayout(LayoutKind.Sequential, Size = 16, Pack = 1)]
     public struct Buffer16
     {
-        [DebuggerBrowsable(DebuggerBrowsableState.Never)] private ulong _dummy0;
-        [DebuggerBrowsable(DebuggerBrowsableState.Never)] private ulong _dummy1;
+        private unsafe fixed byte Bytes[16];
 
-        public byte this[int i]
+        public unsafe byte this[int i]
         {
-            get => Bytes[i];
+            readonly get => Bytes[i];
             set => Bytes[i] = value;
         }
-
-        public Span<byte> Bytes => SpanHelpers.AsByteSpan(ref this);
 
         // Prevent a defensive copy by changing the read-only in reference to a reference with Unsafe.AsRef()
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

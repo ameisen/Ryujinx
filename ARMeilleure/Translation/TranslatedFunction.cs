@@ -8,38 +8,43 @@ namespace ARMeilleure.Translation
     {
         private const int MinCallsForRejit = 100;
 
-        private GuestFunction _func;
-        private IntPtr _funcPtr;
+        public readonly IntPtr Pointer;
 
-        private bool _rejit;
-        private int  _callCount;
+        private volatile int _entryCount;
 
-        public bool HighCq => !_rejit;
+        private readonly GuestFunction _func;
 
-        public TranslatedFunction(GuestFunction func, bool rejit)
+        private readonly ulong _address;
+        public readonly bool HighCq;
+        private int _callCount;
+
+        public TranslatedFunction(GuestFunction func, ulong address, bool highCq)
         {
-            _func  = func;
-            _rejit = rejit;
+            _func = func;
+            Pointer = Marshal.GetFunctionPointerForDelegate(func);
+            HighCq = highCq;
+            _address = address;
         }
+
+        public bool Discard() => Interlocked.CompareExchange(ref _entryCount, int.MinValue, 0) == 0;
 
         public ulong Execute(State.ExecutionContext context)
         {
-            return _func(context.NativeContextPtr);
-        }
-
-        public bool ShouldRejit()
-        {
-            return _rejit && Interlocked.Increment(ref _callCount) == MinCallsForRejit;
-        }
-
-        public IntPtr GetPointer()
-        {
-            if (_funcPtr == IntPtr.Zero)
+            if (Interlocked.Increment(ref _entryCount) <= 0)
             {
-                _funcPtr = Marshal.GetFunctionPointerForDelegate(_func);
+                return _address;
             }
 
-            return _funcPtr;
+            try
+            {
+                return _func(context.NativeContextPtr);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _entryCount);
+            }
         }
+
+        public bool ShouldRejit => !HighCq && Interlocked.Increment(ref _callCount) == MinCallsForRejit;
     }
 }

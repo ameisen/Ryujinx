@@ -7,12 +7,7 @@ namespace Ryujinx.Common
 {
     public static class EmbeddedResources
     {
-        private readonly static Assembly ResourceAssembly;
-
-        static EmbeddedResources()
-        {
-            ResourceAssembly = Assembly.GetAssembly(typeof(EmbeddedResources));
-        }
+        private readonly static Assembly ResourceAssembly = Assembly.GetAssembly(typeof(EmbeddedResources));
 
         public static byte[] Read(string filename)
         {

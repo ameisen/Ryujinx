@@ -15,19 +15,26 @@ namespace ARMeilleure.Translation
 
         private const int CacheSize = 2047 * 1024 * 1024;
 
-        private static ReservedRegion _jitRegion;
+        private static readonly ReservedRegion _jitRegion;
 
         private static IntPtr _basePointer => _jitRegion.Pointer;
 
-        private static int _offset;
+        private static readonly JitCacheMemoryAllocator _allocator;
 
-        private static List<JitCacheEntry> _cacheEntries;
+        private static readonly Dictionary<int, JitCacheEntry> _cacheEntries;
 
-        private static object _lock;
+        private static int _protectedOffset;
+
+        private static readonly object _lock;
+
+        private static IntPtr GetPointer(int offset) => _basePointer + offset;
+        private static int GetOffset(IntPtr address) => checked((int)((ulong)address - (ulong)_basePointer));
 
         static JitCache()
         {
             _jitRegion = new ReservedRegion(CacheSize);
+
+            int startOffset = 0;
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -35,10 +42,14 @@ namespace ARMeilleure.Translation
                 JitUnwindWindows.InstallFunctionTableHandler(_basePointer, CacheSize);
 
                 // The first page is used for the table based SEH structs.
-                _offset = PageSize;
+                startOffset = PageSize;
             }
 
-            _cacheEntries = new List<JitCacheEntry>();
+            _allocator = new JitCacheMemoryAllocator(CacheSize - startOffset, startOffset);
+
+            _cacheEntries = new Dictionary<int, JitCacheEntry>();
+
+            _protectedOffset = 0;
 
             _lock = new object();
         }
@@ -55,84 +66,83 @@ namespace ARMeilleure.Translation
 
                 Marshal.Copy(code, 0, funcPtr, code.Length);
 
-                ReprotectRange(funcOffset, code.Length);
+                ReprotectTo(funcOffset + code.Length);
 
                 Add(new JitCacheEntry(funcOffset, code.Length, func.UnwindInfo));
+
+                MemoryManagement.FlushInstructionCache(funcPtr, (ulong)code.Length);
 
                 return funcPtr;
             }
         }
 
-        private static void ReprotectRange(int offset, int size)
+        private static void ReprotectTo(int offset)
         {
             // Map pages that are already full as RX.
             // Map pages that are not full yet as RWX.
             // On unix, the address must be page aligned.
-            int endOffs = offset + size;
+            if (offset <= _protectedOffset)
+            {
+                return;
+            }
 
-            int pageStart = offset  & ~PageMask;
-            int pageEnd   = endOffs & ~PageMask;
+            int pageStart = _protectedOffset & ~PageMask;
+            int pageEnd   = (offset + PageMask) & ~PageMask;
 
             int fullPagesSize = pageEnd - pageStart;
 
-            if (fullPagesSize != 0)
-            {
-                IntPtr funcPtr = _basePointer + pageStart;
+            IntPtr funcPtr = GetPointer(pageStart);
 
-                MemoryManagement.Reprotect(funcPtr, (ulong)fullPagesSize, MemoryProtection.ReadAndExecute);
-            }
+            MemoryManagement.Reprotect(funcPtr, (ulong)fullPagesSize, MemoryProtection.ReadWriteExecute);
 
-            int remaining = endOffs - pageEnd;
-
-            if (remaining != 0)
-            {
-                IntPtr funcPtr = _basePointer + pageEnd;
-
-                MemoryManagement.Reprotect(funcPtr, (ulong)remaining, MemoryProtection.ReadWriteExecute);
-            }
+            _protectedOffset = pageEnd;
         }
 
         private static int Allocate(int codeSize)
         {
             codeSize = checked(codeSize + (CodeAlignment - 1)) & ~(CodeAlignment - 1);
 
-            int allocOffset = _offset;
+            int allocOffset = _allocator.Allocate(codeSize);
 
-            _offset += codeSize;
+            ulong endOffset = (ulong)allocOffset + (ulong)codeSize;
 
-            _jitRegion.ExpandIfNeeded((ulong)_offset);
-
-            if ((ulong)(uint)_offset > CacheSize)
-            {
-                throw new OutOfMemoryException();
-            }
+            _jitRegion.ExpandIfNeeded(endOffset);
 
             return allocOffset;
         }
 
+        public static void Free(IntPtr address)
+        {
+            int offset = GetOffset(address);
+            lock (_lock)
+            {
+                if (_cacheEntries.Remove(offset, out var entry))
+                {
+                    _allocator.Free(entry.Offset);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Address {address} does not exist within the Cache Entries");
+                }
+            }
+        }
+
         private static void Add(JitCacheEntry entry)
         {
-            _cacheEntries.Add(entry);
+            _cacheEntries.Add(entry.Offset, entry);
         }
 
         public static bool TryFind(int offset, out JitCacheEntry entry)
         {
             lock (_lock)
             {
-                foreach (JitCacheEntry cacheEntry in _cacheEntries)
+                if (_cacheEntries.TryGetValue(offset, out entry))
                 {
-                    int endOffset = cacheEntry.Offset + cacheEntry.Size;
-
-                    if (offset >= cacheEntry.Offset && offset < endOffset)
-                    {
-                        entry = cacheEntry;
-
-                        return true;
-                    }
+                    return true;
                 }
             }
 
-            entry = default(JitCacheEntry);
+            entry = default;
 
             return false;
         }

@@ -6,6 +6,7 @@ using ARMeilleure.Memory;
 using ARMeilleure.State;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 
 using static ARMeilleure.IntermediateRepresentation.OperandHelper;
@@ -18,15 +19,17 @@ namespace ARMeilleure.Translation
 
         private const bool AlwaysTranslateFunctions = true; // If false, only translates a single block for lowCq.
 
-        private MemoryManager _memory;
+        private readonly MemoryManager _memory;
 
-        private ConcurrentDictionary<ulong, TranslatedFunction> _funcs;
+        private readonly ConcurrentDictionary<ulong, TranslatedFunction> _funcs;
 
-        private JumpTable _jumpTable;
+        private readonly ConcurrentQueue<TranslatedFunction> _oldFunctions;
 
-        private PriorityQueue<RejitRequest> _backgroundQueue;
+        private readonly JumpTable _jumpTable;
 
-        private AutoResetEvent _backgroundTranslatorEvent;
+        private readonly PriorityQueue<RejitRequest> _backgroundQueue;
+
+        private readonly AutoResetEvent _backgroundTranslatorEvent;
 
         private volatile int _threadCount;
 
@@ -42,6 +45,8 @@ namespace ARMeilleure.Translation
 
             _backgroundTranslatorEvent = new AutoResetEvent(false);
 
+            _oldFunctions = new ConcurrentQueue<TranslatedFunction>();
+
             DirectCallStubs.InitializeStubs();
         }
 
@@ -53,11 +58,58 @@ namespace ARMeilleure.Translation
                 {
                     TranslatedFunction func = Translate(request.Address, request.Mode, highCq: true);
 
-                    _funcs.AddOrUpdate(request.Address, func, (key, oldFunc) => func);
-                    _jumpTable.RegisterFunction(request.Address, func);
+                    TranslatedFunction oldFunction = null;
+
+                    bool skipped = false;
+
+                    _funcs.AddOrUpdate(request.Address, func, (key, oldFunc) =>
+                    {
+                        if (oldFunc != null)
+                        {
+                            if (!oldFunc.HighCq)
+                            {
+                                oldFunction = oldFunc;
+                            }
+                            else
+                            {
+                                skipped = true;
+                                oldFunction = func;
+                                return oldFunc;
+                            }
+                        }
+
+                        return func;
+                    });
+
+                    if (!skipped)
+                    {
+                        _jumpTable.RegisterFunction(request.Address, func);
+                    }
+
+                    if (oldFunction != null) {
+                        _oldFunctions.Enqueue(oldFunction);
+                    }
                 }
                 else
                 {
+                    var skippedFunctions = new List<TranslatedFunction>(_oldFunctions.Count);
+
+                    while (_oldFunctions.TryDequeue(out TranslatedFunction function))
+                    {
+                        if (function.Discard())
+                        {
+                            JitCache.Free(function.Pointer);
+                        }
+                        else
+                        {
+                            skippedFunctions.Add(function);
+                        }
+                    }
+
+                    foreach (var function in skippedFunctions) {
+                        _oldFunctions.Enqueue(function);
+                    }
+
                     _backgroundTranslatorEvent.WaitOne();
                 }
             }
@@ -132,7 +184,7 @@ namespace ARMeilleure.Translation
 
                 _funcs.TryAdd(address, func);
             }
-            else if (isCallTarget && func.ShouldRejit())
+            else if (isCallTarget && func.ShouldRejit)
             {
                 _backgroundQueue.Enqueue(0, new RejitRequest(address, mode));
 
@@ -187,7 +239,7 @@ namespace ARMeilleure.Translation
             OperandHelper.ResetOperandPool(highCq);
             OperationHelper.ResetOperationPool(highCq);
 
-            return new TranslatedFunction(func, rejit: !highCq);
+            return new TranslatedFunction(func, address, highCq: highCq);
         }
 
         private static ControlFlowGraph EmitAndGetCFG(ArmEmitterContext context, Block[] blocks)
