@@ -31,6 +31,7 @@ namespace ARMeilleure.IntermediateRepresentation
         CountLeadingZeros,
         Divide,
         DivideUI,
+        Exchange,
         Load,
         Load16,
         Load8,

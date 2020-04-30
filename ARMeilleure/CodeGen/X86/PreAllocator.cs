@@ -279,7 +279,7 @@ namespace ARMeilleure.CodeGen.X86
                     Operand edx = Gpr(X86Register.Rdx, OperandType.I32);
 
                     // Value 0x01 = Version, family and feature information.
-                    nodes.AddBefore(node, Operation(Instruction.Copy, eax, Const(1)));
+                    nodes.AddBefore(node, Operation(Instruction.Copy, eax, operation.GetSource(0)));
 
                     // Copy results to the destination register.
                     // The values are split into 2 32-bits registers, we merge them

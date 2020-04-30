@@ -5,6 +5,12 @@ using System.IO;
 
 namespace ARMeilleure.CodeGen.X86
 {
+    static class AssemblerExt
+    {
+        public static bool IsSet(this Assembler.InstructionFlags flags, Assembler.InstructionFlags flag) => (flags & flag) != 0;
+        public static int GetPrefix(this Assembler.InstructionFlags flags) => (int)(flags & Assembler.InstructionFlags.PrefixMask) >> (int)Assembler.InstructionFlags.PrefixBit;
+    }
+
     class Assembler
     {
         private const int BadOp       = 0;
@@ -17,7 +23,7 @@ namespace ARMeilleure.CodeGen.X86
         private const int MaxRegNumber = 15;
 
         [Flags]
-        private enum InstructionFlags
+        internal enum InstructionFlags
         {
             None     = 0,
             RegOnly  = 1 << 0,
@@ -30,7 +36,8 @@ namespace ARMeilleure.CodeGen.X86
             PrefixMask = 3 << PrefixBit,
             Prefix66   = 1 << PrefixBit,
             PrefixF3   = 2 << PrefixBit,
-            PrefixF2   = 3 << PrefixBit
+            PrefixF2   = 3 << PrefixBit,
+            _PrefixEnd = PrefixBit + PrefixMask,
         }
 
         private readonly struct InstructionInfo
@@ -62,7 +69,7 @@ namespace ARMeilleure.CodeGen.X86
 
         private static readonly InstructionInfo[] _instTable;
 
-        private Stream _stream;
+        private readonly Stream _stream;
 
         static Assembler()
         {
@@ -117,6 +124,9 @@ namespace ARMeilleure.CodeGen.X86
             Add(X86Instruction.Divps,      new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x00000f5e, InstructionFlags.Vex));
             Add(X86Instruction.Divsd,      new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x00000f5e, InstructionFlags.Vex | InstructionFlags.PrefixF2));
             Add(X86Instruction.Divss,      new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x00000f5e, InstructionFlags.Vex | InstructionFlags.PrefixF3));
+            Add(X86Instruction.Xchg,       new InstructionInfo(0x00000087, BadOp,      BadOp,      BadOp,      0x00000087, InstructionFlags.None));
+            Add(X86Instruction.XchgA,      new InstructionInfo(0x00000087, BadOp,      BadOp,      BadOp,      0x00000087, InstructionFlags.None));
+            Add(X86Instruction.Xchg8,      new InstructionInfo(0x00000086, BadOp,      BadOp,      BadOp,      0x00000086, InstructionFlags.Reg8Src | InstructionFlags.Reg8Dest));
             Add(X86Instruction.Haddpd,     new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x00000f7c, InstructionFlags.Vex | InstructionFlags.Prefix66));
             Add(X86Instruction.Haddps,     new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x00000f7c, InstructionFlags.Vex | InstructionFlags.PrefixF2));
             Add(X86Instruction.Idiv,       new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x070000f7, InstructionFlags.None));
@@ -125,6 +135,7 @@ namespace ARMeilleure.CodeGen.X86
             Add(X86Instruction.Insertps,   new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x000f3a21, InstructionFlags.Vex | InstructionFlags.Prefix66));
             Add(X86Instruction.Jmp,        new InstructionInfo(0x040000ff, BadOp,      BadOp,      BadOp,      BadOp,      InstructionFlags.None));
             Add(X86Instruction.Lea,        new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x0000008d, InstructionFlags.None));
+            Add(X86Instruction.Lzcnt,      new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x00000fbd, InstructionFlags.PrefixF3));
             Add(X86Instruction.Maxpd,      new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x00000f5f, InstructionFlags.Vex | InstructionFlags.Prefix66));
             Add(X86Instruction.Maxps,      new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x00000f5f, InstructionFlags.Vex));
             Add(X86Instruction.Maxsd,      new InstructionInfo(BadOp,      BadOp,      BadOp,      BadOp,      0x00000f5f, InstructionFlags.Vex | InstructionFlags.PrefixF2));
@@ -277,8 +288,66 @@ namespace ARMeilleure.CodeGen.X86
             _stream = stream;
         }
 
+        // It is assumed that instructions calling this do not actually need to operate on the upper bits, like OR which would give the same
+        // result as 0s, and do not clear the upper bits.
+        private bool HandleRegisterADest8_16(Operand dest, Operand source, OperandType type, byte opCode8, byte opCode16, byte opCode, byte prefix64 = 0)
+        {
+            /*
+            bool operandsValid =
+                dest.Kind == OperandKind.Register && dest.Register == X86Register.Rax &&
+                source.Kind == OperandKind.Constant;
+
+            if (operandsValid && ConstFitsOnS16((long)source.Value))
+            {
+                if (ConstFitsOnS8((long)source.Value))
+                {
+                    WriteByte(opCode8);
+                    WriteByte((byte)(sbyte)source.Value);
+                }
+                else
+                {
+
+                    WriteByte(opCode16);
+                    WriteInt16((short)source.Value);
+                }
+                return true;
+            }
+            */
+
+            return (opCode != 0) && HandleRegisterADest(dest, source, type, opCode, prefix64);
+        }
+
+        private bool HandleRegisterADest(Operand dest, Operand source, OperandType type, byte opCode, byte prefix64 = 0)
+        {
+            if (
+                dest.Kind == OperandKind.Register && dest.Register == X86Register.Rax &&
+                source.Kind == OperandKind.Constant && !ConstFitsOnS8((long)source.Value) && IsImm32(source.Value, type)
+            )
+            {
+                if (type == OperandType.I64)
+                {
+                    if (prefix64 == 0)
+                    {
+                        throw new ArgumentException("No REX prefix specified for 64-bit operation");
+                    }
+                    WriteByte(prefix64);
+                }
+                WriteByte(opCode);
+                WriteInt32((int)source.Value);
+
+                return true;
+            }
+
+            return false;
+        }
+
         public void Add(Operand dest, Operand source, OperandType type)
         {
+            if (HandleRegisterADest(dest, source, type, 0x05, RexWPrefix))
+            {
+                return;
+            }
+
             WriteInstruction(dest, source, type, X86Instruction.Add);
         }
 
@@ -294,6 +363,12 @@ namespace ARMeilleure.CodeGen.X86
 
         public void And(Operand dest, Operand source, OperandType type)
         {
+            // TODO : 8/16
+            if (HandleRegisterADest(dest, source, type, 0x25, RexWPrefix))
+            {
+                return;
+            }
+
             WriteInstruction(dest, source, type, X86Instruction.And);
         }
 
@@ -326,6 +401,14 @@ namespace ARMeilleure.CodeGen.X86
 
         public void Cmp(Operand src1, Operand src2, OperandType type)
         {
+            if (
+                HandleRegisterADest(src1, src2, type, 0x3d, RexWPrefix) ||
+                HandleRegisterADest(src2, src1, type, 0x3d, RexWPrefix)
+            )
+            {
+                return;
+            }
+
             WriteInstruction(src1, src2, type, X86Instruction.Cmp);
         }
 
@@ -397,6 +480,34 @@ namespace ARMeilleure.CodeGen.X86
         public void Divss(Operand dest, Operand src1, Operand src2)
         {
             WriteInstruction(dest, src1, src2, X86Instruction.Divss);
+        }
+
+        public void Xchg(Operand dest, Operand source, OperandType type)
+        {
+            if (dest.Register == X86Register.Rax || source.Register == X86Register.Rax)
+            {
+                XchgA(dest, source, type);
+            }
+            else
+            {
+                WriteInstruction(dest, source, type, X86Instruction.Xchg);
+            }
+        }
+
+        public void XchgA(Operand dest, Operand source, OperandType type)
+        {
+            // Make sure that the 'dest' is not the A register.
+            // The 'RegOnly' flag specifies that the destination is the one
+            // that is being encoded.
+
+            if (dest.Register == X86Register.Rax)
+            {
+                var tempOperand = dest;
+                dest = source;
+                source = tempOperand;
+            }
+
+            WriteInstruction(dest, source, type, X86Instruction.XchgA);
         }
 
         public void Idiv(Operand source)
@@ -502,6 +613,11 @@ namespace ARMeilleure.CodeGen.X86
         public void Lea(Operand dest, Operand source, OperandType type)
         {
             WriteInstruction(dest, source, type, X86Instruction.Lea);
+        }
+
+        public void Lzcnt(Operand dest, Operand source, OperandType type)
+        {
+            WriteInstruction(dest, source, type, X86Instruction.Lzcnt);
         }
 
         public void Mov(Operand dest, Operand source, OperandType type)
@@ -630,6 +746,11 @@ namespace ARMeilleure.CodeGen.X86
 
         public void Or(Operand dest, Operand source, OperandType type)
         {
+            if (HandleRegisterADest8_16(dest, source, type, 0x0c, 0x0d, 0x0d, RexWPrefix))
+            {
+                return;
+            }
+
             WriteInstruction(dest, source, type, X86Instruction.Or);
         }
 
@@ -737,21 +858,29 @@ namespace ARMeilleure.CodeGen.X86
 
         public void Ror(Operand dest, Operand source, OperandType type)
         {
+            // TODO one-bit
+
             WriteShiftInst(dest, source, type, X86Instruction.Ror);
         }
 
         public void Sar(Operand dest, Operand source, OperandType type)
         {
+            // TODO one-bit
+
             WriteShiftInst(dest, source, type, X86Instruction.Sar);
         }
 
         public void Shl(Operand dest, Operand source, OperandType type)
         {
+            // TODO one-bit
+
             WriteShiftInst(dest, source, type, X86Instruction.Shl);
         }
 
         public void Shr(Operand dest, Operand source, OperandType type)
         {
+            // TODO one-bit
+
             WriteShiftInst(dest, source, type, X86Instruction.Shr);
         }
 
@@ -764,6 +893,11 @@ namespace ARMeilleure.CodeGen.X86
 
         public void Sub(Operand dest, Operand source, OperandType type)
         {
+            if (HandleRegisterADest(dest, source, type, 0x2d, RexWPrefix))
+            {
+                return;
+            }
+
             WriteInstruction(dest, source, type, X86Instruction.Sub);
         }
 
@@ -779,11 +913,24 @@ namespace ARMeilleure.CodeGen.X86
 
         public void Test(Operand src1, Operand src2, OperandType type)
         {
+            if (
+                HandleRegisterADest(src1, src2, type, 0xA9, RexWPrefix) ||
+                HandleRegisterADest(src2, src1, type, 0xA9, RexWPrefix)
+            )
+            {
+                return;
+            }
+
             WriteInstruction(src1, src2, type, X86Instruction.Test);
         }
 
         public void Xor(Operand dest, Operand source, OperandType type)
         {
+            if (HandleRegisterADest(dest, source, type, 0x35, RexWPrefix))
+            {
+                return;
+            }
+
             WriteInstruction(dest, source, type, X86Instruction.Xor);
         }
 
@@ -927,6 +1074,10 @@ namespace ARMeilleure.CodeGen.X86
                 {
                     WriteOpCode(dest, null, source, type, info.Flags, info.OpRMR);
                 }
+                //else if (source.Kind == OperandKind.Memory && info.OpRMR != BadOp)
+                //{
+                //    WriteOpCode(dest, null, source, type, info.Flags, info.OpRMR);
+                //}
                 else if (info.OpRRM != BadOp)
                 {
                     WriteOpCode(dest, null, source, type, info.Flags, info.OpRRM, rrm: true);
@@ -1014,7 +1165,7 @@ namespace ARMeilleure.CodeGen.X86
         {
             int rexPrefix = GetRexPrefix(dest, src2, type, rrm);
 
-            if ((flags & InstructionFlags.RexW) != 0)
+            if (flags.IsSet(InstructionFlags.RexW))
             {
                 rexPrefix |= RexWPrefix;
             }
@@ -1031,7 +1182,7 @@ namespace ARMeilleure.CodeGen.X86
 
                     modRM |= (regIndex & 0b111) << (rrm ? 3 : 0);
 
-                    if ((flags & InstructionFlags.Reg8Dest) != 0 && regIndex >= 4)
+                    if (flags.IsSet(InstructionFlags.Reg8Dest) && regIndex >= 4)
                     {
                         rexPrefix |= RexPrefix;
                     }
@@ -1054,7 +1205,7 @@ namespace ARMeilleure.CodeGen.X86
 
                     modRM |= (regIndex & 0b111) << (rrm ? 0 : 3);
 
-                    if ((flags & InstructionFlags.Reg8Src) != 0 && regIndex >= 4)
+                    if (flags.IsSet(InstructionFlags.Reg8Src) && regIndex >= 4)
                     {
                         rexPrefix |= RexPrefix;
                     }
@@ -1078,6 +1229,8 @@ namespace ARMeilleure.CodeGen.X86
             {
                 // Either source or destination is a memory operand.
                 Register baseReg = memOp.BaseAddress.GetRegister();
+
+                Debug.Assert(memOp.BaseAddress.Kind != OperandKind.LocalVariable);
 
                 X86Register baseRegLow = (X86Register)(baseReg.Index & 0b111);
 
@@ -1144,9 +1297,9 @@ namespace ARMeilleure.CodeGen.X86
 
             Debug.Assert(opCode != BadOp, "Invalid opcode value.");
 
-            if ((flags & InstructionFlags.Vex) != 0 && HardwareCapabilities.SupportsVexEncoding)
+            if (HardwareCapabilities.SupportsVexEncoding && flags.IsSet(InstructionFlags.Vex))
             {
-                int vexByte2 = (int)(flags & InstructionFlags.PrefixMask) >> (int)InstructionFlags.PrefixBit;
+                int vexByte2 = flags.GetPrefix();
 
                 if (src1 != null)
                 {
@@ -1207,7 +1360,7 @@ namespace ARMeilleure.CodeGen.X86
                 }
             }
 
-            if (dest != null && (flags & InstructionFlags.RegOnly) != 0)
+            if (dest != null && flags.IsSet(InstructionFlags.RegOnly))
             {
                 opCode += dest.GetRegister().Index & 7;
             }
@@ -1224,7 +1377,7 @@ namespace ARMeilleure.CodeGen.X86
 
             WriteByte((byte)opCode);
 
-            if ((flags & InstructionFlags.RegOnly) == 0)
+            if (!flags.IsSet(InstructionFlags.RegOnly))
             {
                 WriteByte((byte)modRM);
 
@@ -1343,6 +1496,11 @@ namespace ARMeilleure.CodeGen.X86
         private static bool ConstFitsOnS8(long value)
         {
             return value == (sbyte)value;
+        }
+
+        private static bool ConstFitsOnS16(long value)
+        {
+            return value == (short)value;
         }
 
         private static bool ConstFitsOnS32(long value)

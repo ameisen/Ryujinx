@@ -1,4 +1,5 @@
 using ARMeilleure.Common;
+using System;
 
 namespace ARMeilleure.IntermediateRepresentation
 {
@@ -96,6 +97,11 @@ namespace ARMeilleure.IntermediateRepresentation
             var poolIndex = highCq ? 1 : 0;
             ThreadStaticPool<Operand>.ReturnPool(poolIndex);
             ThreadStaticPool<MemoryOperand>.ReturnPool(poolIndex);
+        }
+        
+        public static bool IsConstantValue(this Operand operand, Predicate<ulong> predicate)
+        {
+            return (operand.Kind == OperandKind.Constant) && predicate(operand.Value);
         }
     }
 }

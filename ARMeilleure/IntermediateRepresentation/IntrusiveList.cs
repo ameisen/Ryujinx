@@ -1,4 +1,7 @@
-﻿using System.Diagnostics;
+﻿using ARMeilleure.Common;
+using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace ARMeilleure.IntermediateRepresentation
@@ -7,7 +10,7 @@ namespace ARMeilleure.IntermediateRepresentation
     /// Represents a efficient linked list that stores the pointer on the object directly and does not allocate.
     /// </summary>
     /// <typeparam name="T">Type of the list items</typeparam>
-    class IntrusiveList<T> where T : class, IIntrusiveListNode<T>
+    class IntrusiveList<T> : IEnumerable<T> where T : class, IIntrusiveListNode<T>
     {
         /// <summary>
         /// First item of the list, or null if empty.
@@ -28,7 +31,7 @@ namespace ARMeilleure.IntermediateRepresentation
         /// Adds a item as the first item of the list.
         /// </summary>
         /// <param name="newNode">Item to be added</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodOptions.FastInline)]
         public void AddFirst(T newNode)
         {
             if (First != null)
@@ -54,7 +57,7 @@ namespace ARMeilleure.IntermediateRepresentation
         /// Adds a item as the last item of the list.
         /// </summary>
         /// <param name="newNode">Item to be added</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodOptions.FastInline)]
         public void AddLast(T newNode)
         {
             if (Last != null)
@@ -82,7 +85,7 @@ namespace ARMeilleure.IntermediateRepresentation
         /// <param name="node">Item on the list that will succeed the new item</param>
         /// <param name="newNode">Item to be added</param>
         /// <returns>New item</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodOptions.FastInline)]
         public T AddBefore(T node, T newNode)
         {
             Debug.Assert(newNode.ListPrevious == null);
@@ -114,7 +117,7 @@ namespace ARMeilleure.IntermediateRepresentation
         /// <param name="node">Item on the list that will preceed the new item</param>
         /// <param name="newNode">Item to be added</param>
         /// <returns>New item</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodOptions.FastInline)]
         public T AddAfter(T node, T newNode)
         {
             Debug.Assert(newNode.ListPrevious == null);
@@ -144,7 +147,7 @@ namespace ARMeilleure.IntermediateRepresentation
         /// Removes a item from the list.
         /// </summary>
         /// <param name="node">The item to be removed</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodOptions.FastInline)]
         public void Remove(T node)
         {
             if (node.ListPrevious != null)
@@ -174,5 +177,17 @@ namespace ARMeilleure.IntermediateRepresentation
 
             Count--;
         }
+
+        [MethodImpl(MethodOptions.FastInline)]
+        public IEnumerator<T> GetEnumerator()
+        {
+            for (var node = First; node != null; node = node.ListNext)
+            {
+                yield return node;
+            }
+        }
+
+        [MethodImpl(MethodOptions.FastInline)]
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

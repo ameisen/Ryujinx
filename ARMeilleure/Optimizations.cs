@@ -18,6 +18,8 @@ namespace ARMeilleure
         public static bool UseAvxIfAvailable    { get; set; } = true;
         public static bool UseAesniIfAvailable  { get; set; } = true;
 
+        public static bool UseAbmIfAvailable    { get; set; } = true;
+
         public static bool ForceLegacySse
         {
             get => HardwareCapabilities.ForceLegacySse;
@@ -33,5 +35,7 @@ namespace ARMeilleure
         internal static bool UsePopCnt => UsePopCntIfAvailable && HardwareCapabilities.SupportsPopcnt;
         internal static bool UseAvx    => UseAvxIfAvailable    && HardwareCapabilities.SupportsAvx && !ForceLegacySse;
         internal static bool UseAesni  => UseAesniIfAvailable  && HardwareCapabilities.SupportsAesni;
+
+        internal static bool UseAbm    => UseAbmIfAvailable    && HardwareCapabilities.SupportsAbm;
     }
 }

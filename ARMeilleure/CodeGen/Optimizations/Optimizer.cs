@@ -1,11 +1,32 @@
 using ARMeilleure.IntermediateRepresentation;
 using ARMeilleure.Translation;
+using System;
 using System.Diagnostics;
 
 namespace ARMeilleure.CodeGen.Optimizations
 {
     static class Optimizer
     {
+        private static bool IsUsedOperation(Node node, out Operation operation, out bool isUnused)
+        {
+            if (node is null)
+            {
+                isUnused = true;
+                operation = null;
+                return false;
+            }
+
+            isUnused = IsUnused(node);
+            if (node is Operation op)
+            {
+                operation = op;
+                return true;
+            }
+
+            operation = null;
+            return false;
+        }
+
         public static void RunPass(ControlFlowGraph cfg)
         {
             bool modified;
@@ -14,46 +35,100 @@ namespace ARMeilleure.CodeGen.Optimizations
             {
                 modified = false;
 
-                for (BasicBlock block = cfg.Blocks.First; block != null; block = block.ListNext)
+                bool subModified;
+                do
                 {
-                    Node node = block.Operations.First;
-
-                    while (node != null)
+                    subModified = false;
+                    for (BasicBlock block = cfg.Blocks.First; block != null; block = block.ListNext)
                     {
-                        Node nextNode = node.ListNext;
+                        Node node = block.Operations.First;
 
-                        bool isUnused = IsUnused(node);
-
-                        if (!(node is Operation operation) || isUnused)
+                        while (node != null)
                         {
-                            if (isUnused)
+                            Node nextNode = node.ListNext;
+
+                            if (!IsUsedOperation(node, out var operation, out bool isUnused))
                             {
+                                if (isUnused)
+                                {
+                                    RemoveNode(block, node);
+
+                                    subModified = modified = true;
+                                }
+
+                                node = nextNode;
+
+                                continue;
+                            }
+
+                            ConstantFolding.RunPass(operation);
+
+                            Simplification.RunPass(operation);
+
+
+                            if (DestIsLocalVar(operation) && IsPropagableCopy(operation))
+                            {
+                                PropagateCopy(operation);
+
                                 RemoveNode(block, node);
 
-                                modified = true;
+                                subModified = modified = true;
                             }
 
                             node = nextNode;
-
-                            continue;
                         }
-
-                        ConstantFolding.RunPass(operation);
-
-                        Simplification.RunPass(operation);
-
-                        if (DestIsLocalVar(operation) && IsPropagableCopy(operation))
-                        {
-                            PropagateCopy(operation);
-
-                            RemoveNode(block, node);
-
-                            modified = true;
-                        }
-
-                        node = nextNode;
                     }
                 }
+                while (subModified);
+
+                do
+                {
+                    subModified = false;
+                    for (BasicBlock block = cfg.Blocks.First; block != null; block = block.ListNext)
+                    {
+                        Node node = block.Operations.First;
+
+                        while (node != null)
+                        {
+                            Node nextNode = node.ListNext;
+
+                            if (!(node is Operation operation))
+                            {
+                                node = nextNode;
+                                continue;
+                            }
+
+                            // Now run the simplification pass on both this operation and the next operation, to see if that can be coalesced.
+                            if (IsUsedOperation(nextNode, out var nextOperation, out var _))
+                            {
+                                if (Simplification.RunPass(operation, nextOperation))
+                                {
+                                    // If true is returned, the current node was eliminated.
+                                    node.SetDestinations(Array.Empty<Operand>());
+                                    node.SetSources(Array.Empty<Operand>());
+                                    RemoveNode(block, node);
+                                    node = nextNode;
+                                    subModified = modified = true;
+                                    continue;
+                                }
+                                if (Simplification.RunPostPass(operation, nextOperation))
+                                {
+                                    // If true is returned, the next node was eliminated
+                                    var nextNextNode = nextNode.ListNext;
+                                    nextNode.SetDestinations(Array.Empty<Operand>());
+                                    nextNode.SetSources(Array.Empty<Operand>());
+                                    RemoveNode(block, nextNode);
+                                    node = nextNextNode;
+                                    subModified = modified = true;
+                                    continue;
+                                }
+                            }
+
+                            node = nextNode;
+                        }
+                    }
+                }
+                while (subModified);
             }
             while (modified);
         }

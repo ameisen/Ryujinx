@@ -28,20 +28,11 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
             VecCalleeSavedRegisters = vecCalleeSavedRegisters;
         }
 
-        public readonly int GetAvailableRegisters(RegisterType type)
+        public readonly int GetAvailableRegisters(RegisterType type) => type switch
         {
-            if (type == RegisterType.Integer)
-            {
-                return IntAvailableRegisters;
-            }
-            else if (type == RegisterType.Vector)
-            {
-                return VecAvailableRegisters;
-            }
-            else
-            {
-                throw new ArgumentException($"Invalid register type \"{type}\".");
-            }
-        }
+            RegisterType.Integer => IntAvailableRegisters,
+            RegisterType.Vector => VecAvailableRegisters,
+            _ => throw new ArgumentException($"Invalid register type \"{type}\"."),
+        };
     }
 }

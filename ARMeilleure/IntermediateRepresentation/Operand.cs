@@ -5,7 +5,8 @@ namespace ARMeilleure.IntermediateRepresentation
 {
     class Operand
     {
-        public OperandKind Kind { get; private set; }
+        public bool SuperSpecial = false;
+        public OperandKind Kind { get; set; }
 
         public OperandType Type { get; private set; }
 
@@ -13,6 +14,23 @@ namespace ARMeilleure.IntermediateRepresentation
 
         public List<Node> Assignments { get; }
         public List<Node> Uses        { get; }
+
+        public bool IsMemory => Kind == OperandKind.Memory;
+        public bool IsLocal => Kind == OperandKind.LocalVariable;
+        public bool IsRegister => Kind == OperandKind.Register;
+        public bool IsConstant => Kind == OperandKind.Constant;
+
+        public bool IsConstantZero(OperandType type)
+        {
+            if (Value == 0)
+            {
+                return true;
+            }
+
+            int bits = type.GetSizeInBits();
+            ulong mask = (bits == 64) ? ulong.MaxValue : ((1UL << bits) - 1);
+            return ((Value & mask) == 0);
+        }
 
         public Operand()
         {
@@ -77,10 +95,10 @@ namespace ARMeilleure.IntermediateRepresentation
             return With(OperandKind.Register, type, (ulong)((int)regType << 24 | index));
         }
 
-        public Register GetRegister()
-        {
-            return new Register((int)Value & 0xffffff, (RegisterType)(Value >> 24));
-        }
+        //[Obsolete("Use Register Property instead")]
+        public Register GetRegister() => Register;
+
+        public Register Register => new Register((int)Value & 0xffffff, (RegisterType)(Value >> 24));
 
         public byte AsByte()
         {

@@ -27,9 +27,12 @@ namespace ARMeilleure.IntermediateRepresentation
             }
         }
 
-        private List<Operand> _destinations;
-        private List<Operand> _sources;
+        private readonly List<Operand> _destinations;
+        private readonly List<Operand> _sources;
         private bool _clearedDest;
+
+        public List<Operand> Destinations => _destinations;
+        public List<Operand> Sources => _sources;
 
         public int DestinationsCount => _destinations.Count;
         public int SourcesCount      => _sources.Count;
@@ -133,7 +136,7 @@ namespace ARMeilleure.IntermediateRepresentation
             _clearedDest = false;
         }
 
-        public void SetDestination(Operand destination)
+        public void SetDestination(Operand destination, bool direct = false)
         {
             RemoveOldDestinations();
 
@@ -144,6 +147,27 @@ namespace ARMeilleure.IntermediateRepresentation
             if (destination.Kind == OperandKind.LocalVariable)
             {
                 destination.Assignments.Add(this);
+            }
+            else if (destination.Kind == OperandKind.Memory)
+            {
+                MemoryOperand memOp = (MemoryOperand)destination;
+
+                if (direct)
+                {
+                    memOp.Assignments.Add(this);
+                }
+                else
+                {
+                    if (memOp.BaseAddress != null)
+                    {
+                        memOp.BaseAddress.Assignments.Add(this);
+                    }
+
+                    if (memOp.Index != null)
+                    {
+                        memOp.Index.Assignments.Add(this);
+                    }
+                }
             }
         }
 
@@ -169,6 +193,14 @@ namespace ARMeilleure.IntermediateRepresentation
             {
                 RemoveUse(_sources[index]);
             }
+        }
+
+        public void Reset()
+        {
+            RemoveOldSources();
+            Resize(_sources, 0);
+            RemoveOldDestinations();
+            Resize(_destinations, 0);
         }
 
         public void SetSource(Operand source)

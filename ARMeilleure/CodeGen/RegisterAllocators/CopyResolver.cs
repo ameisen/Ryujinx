@@ -7,16 +7,16 @@ using static ARMeilleure.IntermediateRepresentation.OperationHelper;
 
 namespace ARMeilleure.CodeGen.RegisterAllocators
 {
-    class CopyResolver
+    sealed class CopyResolver
     {
-        private class ParallelCopy
+        private struct ParallelCopy
         {
-            private struct Copy
+            private readonly struct Copy
             {
-                public Register Dest   { get; }
-                public Register Source { get; }
+                public readonly Register Dest   { get; }
+                public readonly Register Source { get; }
 
-                public OperandType Type { get; }
+                public readonly OperandType Type { get; }
 
                 public Copy(Register dest, Register source, OperandType type)
                 {
@@ -26,13 +26,13 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
                 }
             }
 
-            private List<Copy> _copies;
+            private readonly List<Copy> _copies;
 
             public int Count => _copies.Count;
 
-            public ParallelCopy()
+            public ParallelCopy(int capacity = 0)
             {
-                _copies = new List<Copy>();
+                _copies = new List<Copy>(capacity: capacity);
             }
 
             public void AddCopy(Register dest, Register source, OperandType type)
@@ -42,13 +42,13 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
 
             public void Sequence(List<Operation> sequence)
             {
-                Dictionary<Register, Register> locations = new Dictionary<Register, Register>();
-                Dictionary<Register, Register> sources   = new Dictionary<Register, Register>();
+                var locations = new Dictionary<Register, Register>(capacity: _copies.Count);
+                var sources   = new Dictionary<Register, Register>(capacity: _copies.Count);
 
-                Dictionary<Register, OperandType> types = new Dictionary<Register, OperandType>();
+                var types = new Dictionary<Register, OperandType>(capacity: _copies.Count);
 
-                Queue<Register> pendingQueue = new Queue<Register>();
-                Queue<Register> readyQueue   = new Queue<Register>();
+                var pendingQueue = new Queue<Register>(capacity: _copies.Count);
+                var readyQueue   = new Queue<Register>(capacity: _copies.Count);
 
                 foreach (Copy copy in _copies)
                 {
@@ -99,9 +99,10 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
                     {
                         OperandType type = types[copyDest];
 
-                        type = type.IsInteger() ? OperandType.I64 : OperandType.V128;
+                        bool isInteger = type.IsInteger();
+                        type = isInteger ? OperandType.I64 : OperandType.V128;
 
-                        EmitXorSwap(sequence, GetRegister(copyDest, type), GetRegister(copySource, type));
+                        EmitSwap(isInteger, sequence, GetRegister(copyDest, type), GetRegister(copySource, type));
 
                         locations[origSource] = copyDest;
 
@@ -134,9 +135,26 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
                 }
             }
 
+            private static void EmitSwap(bool isInteger, List<Operation> sequence, Operand x, Operand y)
+            {
+                if (!isInteger)
+                {
+                    EmitXorSwap(sequence, x, y);
+                }
+                else
+                {
+                    EmitExchange(sequence, x, y);
+                }
+            }
+
             private static void EmitCopy(List<Operation> sequence, Operand x, Operand y)
             {
                 sequence.Add(Operation(Instruction.Copy, x, y));
+            }
+
+            private static void EmitExchange(List<Operation> sequence, Operand x, Operand y)
+            {
+                sequence.Add(Operation(Instruction.Exchange, x, y));
             }
 
             private static void EmitXorSwap(List<Operation> sequence, Operand x, Operand y)
@@ -147,19 +165,19 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
             }
         }
 
-        private Queue<Operation> _fillQueue  = new Queue<Operation>();
-        private Queue<Operation> _spillQueue = new Queue<Operation>();
+        private readonly Queue<Operation> _fillQueue  = new Queue<Operation>();
+        private readonly Queue<Operation> _spillQueue = new Queue<Operation>();
 
-        private ParallelCopy _parallelCopy;
+        private readonly ParallelCopy _parallelCopy;
 
         public bool HasCopy { get; private set; }
 
-        public CopyResolver()
+        public CopyResolver(int capacity = 0)
         {
             _fillQueue  = new Queue<Operation>();
             _spillQueue = new Queue<Operation>();
 
-            _parallelCopy = new ParallelCopy();
+            _parallelCopy = new ParallelCopy(capacity: capacity);
         }
 
         public void AddSplit(LiveInterval left, LiveInterval right)
@@ -222,9 +240,9 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
             HasCopy = true;
         }
 
-        public Operation[] Sequence()
+        public List<Operation> Sequence()
         {
-            List<Operation> sequence = new List<Operation>();
+            var sequence = new List<Operation>();
 
             while (_spillQueue.TryDequeue(out Operation spillOp))
             {
@@ -238,7 +256,7 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
                 sequence.Add(fillOp);
             }
 
-            return sequence.ToArray();
+            return sequence;
         }
 
         private static Operand GetRegister(Register reg, OperandType type)

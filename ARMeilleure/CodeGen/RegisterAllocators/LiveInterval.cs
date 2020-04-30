@@ -6,21 +6,21 @@ using System.Diagnostics;
 
 namespace ARMeilleure.CodeGen.RegisterAllocators
 {
-    class LiveInterval : IComparable<LiveInterval>
+    sealed class LiveInterval : IComparable<LiveInterval>
     {
         public const int NotFound = -1;
 
-        private LiveInterval _parent;
+        private readonly LiveInterval _parent;
 
-        private SortedIntegerList _usePositions;
+        private readonly SortedIntegerList _usePositions;
 
         public int UsesCount => _usePositions.Count;
 
-        private List<LiveRange> _ranges;
+        private readonly List<LiveRange> _ranges;
 
-        private SortedList<int, LiveInterval> _childs;
+        private readonly SortedList<int, LiveInterval> _children;
 
-        public bool IsSplit => _childs.Count != 0;
+        public bool IsSplit => _children.Count != 0;
 
         public Operand Local { get; }
 
@@ -42,7 +42,7 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
 
             _ranges = new List<LiveRange>();
 
-            _childs = new SortedList<int, LiveInterval>();
+            _children = new SortedList<int, LiveInterval>();
 
             SpillOffset = -1;
         }
@@ -100,7 +100,7 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
                 throw new InvalidOperationException("Empty interval.");
             }
 
-            return _ranges[_ranges.Count - 1].End;
+            return _ranges.Back().End;
         }
 
         public void AddRange(int start, int end)
@@ -244,12 +244,12 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
             return NotFound;
         }
 
-        public IEnumerable<LiveInterval> SplitChilds()
+        public IList<LiveInterval> SplitChilds()
         {
-            return _childs.Values;
+            return _children.Values;
         }
 
-        public IList<int> UsePositions()
+        public List<int> UsePositions()
         {
             return _usePositions.GetList();
         }
@@ -334,7 +334,7 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
         {
             Debug.Assert(!child.IsEmpty, "Trying to insert a empty interval.");
 
-            _parent._childs.Add(child.GetStart(), child);
+            _parent._children.Add(child.GetStart(), child);
         }
 
         public LiveInterval GetSplitChild(int position)
@@ -344,7 +344,7 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
                 return this;
             }
 
-            foreach (LiveInterval splitChild in _childs.Values)
+            foreach (LiveInterval splitChild in _children.Values)
             {
                 if (splitChild.Overlaps(position))
                 {
@@ -357,7 +357,7 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
 
         public bool TrySpillWithSiblingOffset()
         {
-            foreach (LiveInterval splitChild in _parent._childs.Values)
+            foreach (LiveInterval splitChild in _parent._children.Values)
             {
                 if (splitChild.IsSpilled)
                 {

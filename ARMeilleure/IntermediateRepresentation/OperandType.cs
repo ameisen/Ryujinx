@@ -47,5 +47,29 @@ namespace ARMeilleure.IntermediateRepresentation
 
             throw new InvalidOperationException($"Invalid operand type \"{type}\".");
         }
+
+        public static int GetSizeInBits(this OperandType type) => GetSizeInBytes(type) << 3; 
+
+        public static OperandType GetSmallerType(this OperandType a, OperandType b)
+        {
+            return (GetSizeInBytes(a) < GetSizeInBytes(b)) ? a : b;
+        }
+
+        public static OperandType GetLargerType(this OperandType a, OperandType b)
+        {
+            return (GetSizeInBytes(a) >= GetSizeInBytes(b)) ? a : b;
+        }
+
+        public static OperandType GetGPOperandType(this OperandType type)
+        {
+            switch (type)
+            {
+                case OperandType.I32:
+                case OperandType.I64:
+                    return OperandType.I64;
+                default:
+                    return OperandType.V128;
+            }
+        }
     }
 }

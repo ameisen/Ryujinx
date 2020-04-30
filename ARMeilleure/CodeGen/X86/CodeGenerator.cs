@@ -11,7 +11,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Numerics;
-
+using System.Security.Cryptography;
 using static ARMeilleure.IntermediateRepresentation.OperandHelper;
 
 namespace ARMeilleure.CodeGen.X86
@@ -59,6 +59,7 @@ namespace ARMeilleure.CodeGen.X86
             Add(Instruction.CpuId,                   GenerateCpuId);
             Add(Instruction.Divide,                  GenerateDivide);
             Add(Instruction.DivideUI,                GenerateDivideUI);
+            Add(Instruction.Exchange,                GenerateExchange);
             Add(Instruction.Fill,                    GenerateFill);
             Add(Instruction.Load,                    GenerateLoad);
             Add(Instruction.Load16,                  GenerateLoad16);
@@ -721,6 +722,17 @@ namespace ARMeilleure.CodeGen.X86
                 return;
             }
 
+            if (dest.Kind == OperandKind.Register && source.Kind == OperandKind.Constant)
+            {
+                if (source.Value != 0)
+                {
+                    if (source.IsConstantZero(dest.Type))
+                    {
+                        throw new Exception();
+                    }
+                }
+            }
+
             if (dest.Kind   == OperandKind.Register &&
                 source.Kind == OperandKind.Constant && source.Value == 0)
             {
@@ -746,26 +758,33 @@ namespace ARMeilleure.CodeGen.X86
 
             Debug.Assert(dest.Type.IsInteger());
 
-            context.Assembler.Bsr(dest, source, dest.Type);
+            if (ARMeilleure.Optimizations.UseAbm)
+            {
+                context.Assembler.Lzcnt(dest, source, dest.Type);
+            }
+            else
+            {
+                context.Assembler.Bsr(dest, source, dest.Type);
 
-            int operandSize = dest.Type == OperandType.I32 ? 32 : 64;
-            int operandMask = operandSize - 1;
+                int operandSize = dest.Type == OperandType.I32 ? 32 : 64;
+                int operandMask = operandSize - 1;
 
-            // When the input operand is 0, the result is undefined, however the
-            // ZF flag is set. We are supposed to return the operand size on that
-            // case. So, add an additional jump to handle that case, by moving the
-            // operand size constant to the destination register.
-            context.JumpToNear(X86Condition.NotEqual);
+                // When the input operand is 0, the result is undefined, however the
+                // ZF flag is set. We are supposed to return the operand size on that
+                // case. So, add an additional jump to handle that case, by moving the
+                // operand size constant to the destination register.
+                context.JumpToNear(X86Condition.NotEqual);
 
-            context.Assembler.Mov(dest, Const(operandSize | operandMask), OperandType.I32);
+                context.Assembler.Mov(dest, Const(operandSize | operandMask), OperandType.I32);
 
-            context.JumpHere();
+                context.JumpHere();
 
-            // BSR returns the zero based index of the last bit set on the operand,
-            // starting from the least significant bit. However we are supposed to
-            // return the number of 0 bits on the high end. So, we invert the result
-            // of the BSR using XOR to get the correct value.
-            context.Assembler.Xor(dest, Const(operandMask), OperandType.I32);
+                // BSR returns the zero based index of the last bit set on the operand,
+                // starting from the least significant bit. However we are supposed to
+                // return the number of 0 bits on the high end. So, we invert the result
+                // of the BSR using XOR to get the correct value.
+                context.Assembler.Xor(dest, Const(operandMask), OperandType.I32);
+            }
         }
 
         private static void GenerateCpuId(CodeGenContext context, Operation operation)
@@ -823,6 +842,33 @@ namespace ARMeilleure.CodeGen.X86
             context.Assembler.Div(divisor);
         }
 
+
+        private static void GenerateExchange(CodeGenContext context, Operation operation)
+        {
+            Operand dest = operation.Destination;
+            Operand source = operation.GetSource(0);
+
+            EnsureSameType(dest, source);
+
+            Debug.Assert(dest.Type.IsInteger() || source.Kind != OperandKind.Constant);
+
+            // Exchanges to the same register are useless.
+            if (dest.Kind == source.Kind && dest.Value == source.Value)
+            {
+                return;
+            }
+
+            if (dest.Type.IsInteger())
+            {
+                // TODO : 8-bit?
+                context.Assembler.Xchg(dest, source, dest.Type);
+            }
+            else
+            {
+                throw new ArgumentException($"Exchange instruction does not support SIMD registers.");
+            }
+        }
+
         private static void GenerateFill(CodeGenContext context, Operation operation)
         {
             Operand dest   = operation.Destination;
@@ -865,6 +911,27 @@ namespace ARMeilleure.CodeGen.X86
             Debug.Assert(value.Type.IsInteger());
 
             context.Assembler.Movzx8(value, address, value.Type);
+        }
+
+        private static void GenerateLzcnt(CodeGenContext context, Operation operation)
+        {
+            Operand dest = operation.Destination;
+            Operand source = operation.GetSource(0);
+
+            EnsureSameType(dest, source);
+
+            Debug.Assert(dest.Type.IsInteger());
+
+            Debug.Assert(source.Kind != OperandKind.Constant);
+
+            if (dest.Type.IsInteger())
+            {
+                context.Assembler.Lzcnt(dest, source, dest.Type);
+            }
+            else
+            {
+                throw new ArgumentException($"Exchange instruction does not support SIMD registers.");
+            }
         }
 
         private static void GenerateMultiply(CodeGenContext context, Operation operation)

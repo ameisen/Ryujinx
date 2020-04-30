@@ -6,6 +6,7 @@ using ARMeilleure.Memory;
 using ARMeilleure.State;
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 
 using static ARMeilleure.IntermediateRepresentation.OperandHelper;
@@ -142,6 +143,18 @@ namespace ARMeilleure.Translation
             return func;
         }
 
+        private static readonly long[] Counts = new long[2] { 0, 0 };
+        private static readonly long[] Times = new long[2] { 0, 0 };
+        private static readonly long[] Blocks = new long[2] { 0, 0 };
+        private static long LastPrintInterval = 0;
+        private const long PrintInterval = 1000;
+        private static readonly object PrintLock = new object();
+
+        [ThreadStatic]
+        private static Stopwatch _stopwatch;
+
+        private static Stopwatch stopwatch = _stopwatch ?? (_stopwatch = new Stopwatch());
+
         private TranslatedFunction Translate(ulong address, ExecutionMode mode, bool highCq)
         {
             ArmEmitterContext context = new ArmEmitterContext(_memory, _jumpTable, (long)address, highCq, Aarch32Mode.User);
@@ -156,6 +169,8 @@ namespace ARMeilleure.Translation
                 : Decoder.DecodeBasicBlock(_memory, address, mode);
 
             Logger.EndPass(PassName.Decoding);
+
+            stopwatch.Restart();
 
             Logger.StartPass(PassName.Translation);
 
@@ -186,6 +201,40 @@ namespace ARMeilleure.Translation
 
             OperandHelper.ResetOperandPool(highCq);
             OperationHelper.ResetOperationPool(highCq);
+
+            long ticks = stopwatch.ElapsedTicks;
+
+            ticks = (long)Math.Round((double)ticks / (double)blocks.Length);
+
+            lock (PrintLock)
+            {
+                int index = highCq ? 1 : 0;
+                Interlocked.Increment(ref Counts[index]);
+                Interlocked.Add(ref Times[index], ticks);
+                Interlocked.Add(ref Blocks[index], blocks.Length);
+
+                var totalCounts = Counts[0] + Counts[1];
+                if (totalCounts - LastPrintInterval >= PrintInterval)
+                {
+                    LastPrintInterval = totalCounts;
+
+                    Console.Error.WriteLine("Average Time per Block:");
+                    static double getMS(double ticks)
+                    {
+                        return (ticks / (double)Stopwatch.Frequency) * 1000.0;
+                    }
+
+                    for (int i = 0; i < 2; ++i)
+                    {
+                        double mean = (double)Times[i] / (double)Counts[i];
+
+                        Console.Error.WriteLine(
+                            $"  {((i == 0) ? "lq" : "hq")}: {getMS(mean)} ms"
+                        );
+                    }
+                }
+            }
+
 
             return new TranslatedFunction(func, rejit: !highCq);
         }

@@ -20,6 +20,7 @@ namespace ARMeilleure.Translation
         {
             _func  = func;
             _rejit = rejit;
+            _funcPtr = Marshal.GetFunctionPointerForDelegate(_func);
         }
 
         public ulong Execute(State.ExecutionContext context)

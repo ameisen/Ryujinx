@@ -8,6 +8,7 @@ namespace ARMeilleure.CodeGen.X86
         private delegate ulong GetFeatureInfo();
 
         private static ulong _featureInfo;
+        private static ulong _AmdFeatureInfo;
 
         public static bool SupportsSse3      => (_featureInfo & (1UL << 0))  != 0;
         public static bool SupportsPclmulqdq => (_featureInfo & (1UL << 1))  != 0;
@@ -21,6 +22,8 @@ namespace ARMeilleure.CodeGen.X86
         public static bool SupportsAvx       => (_featureInfo & (1UL << 28)) != 0;
         public static bool SupportsF16c      => (_featureInfo & (1UL << 29)) != 0;
 
+        public static bool SupportsAbm       => (_AmdFeatureInfo & (1UL << 5)) != 0;
+
         public static bool SupportsSse  => (_featureInfo & (1UL << 32 + 25)) != 0;
         public static bool SupportsSse2 => (_featureInfo & (1UL << 32 + 26)) != 0;
 
@@ -28,11 +31,11 @@ namespace ARMeilleure.CodeGen.X86
 
         public static bool SupportsVexEncoding => SupportsAvx && !ForceLegacySse;
 
-        static HardwareCapabilities()
+        private static ulong GetCpuId(uint eax)
         {
             EmitterContext context = new EmitterContext();
 
-            Operand featureInfo = context.CpuId();
+            Operand featureInfo = context.CpuId(eax);
 
             context.Return(featureInfo);
 
@@ -44,9 +47,16 @@ namespace ARMeilleure.CodeGen.X86
                 cfg,
                 argTypes,
                 OperandType.I64,
-                CompilerOptions.HighCq);
+                CompilerOptions.HighCq
+            );
 
-            _featureInfo = getFeatureInfo();
+            return getFeatureInfo();
+        }
+
+        static HardwareCapabilities()
+        {
+            _featureInfo = GetCpuId(1);
+            _AmdFeatureInfo = GetCpuId(0x80000001);
         }
     }
 }

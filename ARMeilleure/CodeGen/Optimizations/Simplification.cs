@@ -1,6 +1,8 @@
+using ARMeilleure.Common;
 using ARMeilleure.IntermediateRepresentation;
 using System;
-
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using static ARMeilleure.IntermediateRepresentation.OperandHelper;
 
 namespace ARMeilleure.CodeGen.Optimizations
@@ -46,6 +48,165 @@ namespace ARMeilleure.CodeGen.Optimizations
                     TryEliminateBinaryOpY(operation, 0);
                     break;
             }
+        }
+
+        private static bool LoadDependantPass([NotNull] Operation sourceOperation, [NotNull] Operation dependantOperation)
+        {
+            return false;
+
+            static bool IsLoad(Operation operation) => operation.Instruction switch
+            {
+                Instruction.Load => true,
+                _ => false,
+            };
+
+            //switch (dependantOperation.Instruction)
+            //{
+            //    case Instruction.BitwiseOr:
+            //        break;
+            //    default:
+            //        return false;
+            //}
+
+            var dependantSources = dependantOperation.Sources;
+
+            if (
+                (!IsLoad(sourceOperation)) ||
+                (sourceOperation.Destinations.Count != 1) || // TODO : I'm not sure how to handle this situation right now.
+                (sourceOperation.Sources.Count != 1) || // TODO : Or this one.
+                (dependantSources.Count == 0) || // If the dependant operation has no sources, it obviously cannot be coalesced.
+                (dependantOperation.Destinations.Count != 1) ||
+                IsLoad(dependantOperation) // TODO : we should handle load operations from dependencies, since x86 MOV can do that.
+            )
+            {
+                return false;
+            }
+
+            var source = sourceOperation.Sources[0];
+            var destination = sourceOperation.Destinations[0];
+            var finalDestination = dependantOperation.Destinations[0];
+
+            if (finalDestination.IsMemory)
+            {
+                return false;
+            }
+
+            // See if any of the dependant operand's sources match the source operand's destination.
+            if (!dependantSources.TryFindIndex(out var matchIndex, (operand) => operand == destination))
+            {
+                return false;
+            }
+
+            // TODO : I'm not sure what to do in this case.
+            if (dependantSources[matchIndex].Kind != source.Kind)
+            {
+                return false;
+            }
+
+            // Make sure none of the other source operands are memory operands.
+            if (dependantSources.Any((operand, i) => (i != matchIndex) && operand.IsMemory))
+            {
+                return false;
+            }
+
+            // TODO : Not sure if this is right, but x86 doesn't allow multiple sources, so make
+            // sure that all other sources are the final destination.
+            //if (!dependantSources.All((operand, i) => (i == matchIndex) || (operand == finalDestination)))
+            //{
+            //    return false;
+            //}
+
+
+            // If we found a match, let's replace that operand.
+            var sources = dependantSources.ToArray();
+            sources[matchIndex] = MemoryOp(destination.Type, source);
+            dependantOperation.SetSources(sources);
+
+            return true;
+        }
+
+        private static bool StoreDependantPass([NotNull] Operation sourceOperation, [NotNull] Operation dependantOperation)
+        {
+            return false;
+
+            static bool IsStore(Operation operation) => operation.Instruction switch
+            {
+                Instruction.Store => true,
+                //Instruction.Store16 => true,
+                //Instruction.Store8 => true,
+                _ => false,
+            };
+            switch (sourceOperation.Instruction)
+            {
+                case Instruction.Subtract:
+                    break;
+                default:
+                    return false;
+            }
+
+            var dependantSources = dependantOperation.Sources;
+
+            if (
+                (!IsStore(dependantOperation)) ||
+                (sourceOperation.Destinations.Count != 1) || // TODO : I'm not sure how to handle this situation right now.
+                (dependantSources.Count != 2) || // If the dependant operation has no sources, it obviously cannot be coalesced.
+                (dependantOperation.Destinations.Count != 0) ||
+                IsStore(sourceOperation)
+            )
+            {
+                return false;
+            }
+
+            var addressOperand = dependantSources[0];
+            var valueOperand = dependantSources[1];
+
+            var destination = sourceOperation.Destinations[0];
+
+            // We cannot propogate the address operand forward
+            if (destination == addressOperand)
+            {
+                return false;
+            }
+
+            // If it isn't the value operand, these two operations are not dependant on one another.
+            if (destination != valueOperand)
+            {
+                return false;
+            }
+
+            // Only the source or the destination can be a memory operand, not both.
+            if (sourceOperation.Sources.Any((operand) => operand.IsMemory))
+            {
+                return false;
+            }
+
+            if (addressOperand.Kind != OperandKind.LocalVariable)
+            {
+                return false;
+            }
+
+            if (destination.Uses.Count > 1)
+            {
+                return false;
+            }
+
+            // If we found a match, let's replace that operand.
+            var newDestination = MemoryOp(destination.Type, addressOperand);
+            newDestination.SuperSpecial = true;
+            dependantOperation.Reset();
+            sourceOperation.SetDestination(newDestination);
+
+            return true;
+        }
+
+        public static bool RunPass([NotNull] Operation sourceOperation, [NotNull] Operation dependantOperation)
+        {
+            return LoadDependantPass(sourceOperation, dependantOperation);
+        }
+
+        public static bool RunPostPass([NotNull] Operation sourceOperation, [NotNull] Operation dependantOperation)
+        {
+            return StoreDependantPass(sourceOperation, dependantOperation);
         }
 
         private static void TryEliminateBitwiseAnd(Operation operation)
@@ -166,13 +327,12 @@ namespace ARMeilleure.CodeGen.Optimizations
 
         private static ulong AllOnes(OperandType type)
         {
-            switch (type)
+            return type switch
             {
-                case OperandType.I32: return ~0U;
-                case OperandType.I64: return ~0UL;
-            }
-
-            throw new ArgumentException("Invalid operand type \"" + type + "\".");
+                OperandType.I32 => uint.MaxValue,
+                OperandType.I64 => ulong.MaxValue,
+                _ => throw new ArgumentException("Invalid operand type \"" + type + "\"."),
+            };
         }
     }
 }

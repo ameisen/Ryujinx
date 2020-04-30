@@ -7,6 +7,6 @@ namespace ARMeilleure.CodeGen.RegisterAllocators
         AllocationResult RunPass(
             ControlFlowGraph cfg,
             StackAllocator stackAlloc,
-            RegisterMasks regMasks);
+            in RegisterMasks regMasks);
     }
 }
