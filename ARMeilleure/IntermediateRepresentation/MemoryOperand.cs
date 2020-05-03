@@ -1,6 +1,8 @@
+using RyuASM.X64;
+
 namespace ARMeilleure.IntermediateRepresentation
 {
-    class MemoryOperand : Operand
+    class MemoryOperand : Operand, IMemoryOperand
     {
         public Operand BaseAddress { get; set; }
         public Operand Index       { get; set; }
@@ -8,6 +10,12 @@ namespace ARMeilleure.IntermediateRepresentation
         public Multiplier Scale { get; private set; }
 
         public int Displacement { get; private set; }
+
+        IOperand IMemoryOperand.BaseAddress => BaseAddress;
+
+        IOperand IMemoryOperand.Index => Index;
+
+        public int Shift => (int)Scale;
 
         public MemoryOperand() { }
 

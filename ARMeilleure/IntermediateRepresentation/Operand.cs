@@ -1,9 +1,10 @@
+using RyuASM.X64;
 using System;
 using System.Collections.Generic;
 
 namespace ARMeilleure.IntermediateRepresentation
 {
-    class Operand
+    class Operand : IOperand
     {
         public OperandKind Kind { get; private set; }
 
@@ -13,6 +14,20 @@ namespace ARMeilleure.IntermediateRepresentation
 
         public List<Node> Assignments { get; }
         public List<Node> Uses        { get; }
+
+        public bool IsRegister => Kind == OperandKind.Register;
+
+        public bool IsConstant => Kind == OperandKind.Constant;
+
+        public bool IsMemory => Kind == OperandKind.Memory;
+
+        public RyuASM.X64.OperandType AssemblerType => Type.ToAssemblerType();
+
+        RyuASM.X64.OperandType IOperand.Type => AssemblerType;
+
+        public uint RegisterIndex => (uint)GetRegister().Index;
+
+        public string KindName => Kind.ToString();
 
         public Operand()
         {

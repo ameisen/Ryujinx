@@ -1,6 +1,8 @@
 using System;
 using System.Runtime.InteropServices;
 
+using AsmRegister = RyuASM.X64.Register;
+
 namespace ARMeilleure.CodeGen.X86
 {
     static class CallingConvention
@@ -9,7 +11,7 @@ namespace ARMeilleure.CodeGen.X86
 
         public static int GetIntAvailableRegisters()
         {
-            return RegistersMask & ~(1 << (int)X86Register.Rsp);
+            return RegistersMask & ~(1 << (int)AsmRegister.Sp);
         }
 
         public static int GetVecAvailableRegisters()
@@ -21,25 +23,25 @@ namespace ARMeilleure.CodeGen.X86
         {
             if (GetCurrentCallConv() == CallConvName.Windows)
             {
-                return (1 << (int)X86Register.Rax) |
-                       (1 << (int)X86Register.Rcx) |
-                       (1 << (int)X86Register.Rdx) |
-                       (1 << (int)X86Register.R8)  |
-                       (1 << (int)X86Register.R9)  |
-                       (1 << (int)X86Register.R10) |
-                       (1 << (int)X86Register.R11);
+                return (1 << (int)AsmRegister.A) |
+                       (1 << (int)AsmRegister.C) |
+                       (1 << (int)AsmRegister.D) |
+                       (1 << (int)AsmRegister.R8)  |
+                       (1 << (int)AsmRegister.R9)  |
+                       (1 << (int)AsmRegister.R10) |
+                       (1 << (int)AsmRegister.R11);
             }
             else /* if (GetCurrentCallConv() == CallConvName.SystemV) */
             {
-                return (1 << (int)X86Register.Rax) |
-                       (1 << (int)X86Register.Rcx) |
-                       (1 << (int)X86Register.Rdx) |
-                       (1 << (int)X86Register.Rsi) |
-                       (1 << (int)X86Register.Rdi) |
-                       (1 << (int)X86Register.R8)  |
-                       (1 << (int)X86Register.R9)  |
-                       (1 << (int)X86Register.R10) |
-                       (1 << (int)X86Register.R11);
+                return (1 << (int)AsmRegister.A) |
+                       (1 << (int)AsmRegister.C) |
+                       (1 << (int)AsmRegister.D) |
+                       (1 << (int)AsmRegister.Si) |
+                       (1 << (int)AsmRegister.Di) |
+                       (1 << (int)AsmRegister.R8)  |
+                       (1 << (int)AsmRegister.R9)  |
+                       (1 << (int)AsmRegister.R10) |
+                       (1 << (int)AsmRegister.R11);
             }
         }
 
@@ -47,12 +49,12 @@ namespace ARMeilleure.CodeGen.X86
         {
             if (GetCurrentCallConv() == CallConvName.Windows)
             {
-                return (1 << (int)X86Register.Xmm0) |
-                       (1 << (int)X86Register.Xmm1) |
-                       (1 << (int)X86Register.Xmm2) |
-                       (1 << (int)X86Register.Xmm3) |
-                       (1 << (int)X86Register.Xmm4) |
-                       (1 << (int)X86Register.Xmm5);
+                return (1 << (int)AsmRegister.Xmm0) |
+                       (1 << (int)AsmRegister.Xmm1) |
+                       (1 << (int)AsmRegister.Xmm2) |
+                       (1 << (int)AsmRegister.Xmm3) |
+                       (1 << (int)AsmRegister.Xmm4) |
+                       (1 << (int)AsmRegister.Xmm5);
             }
             else /* if (GetCurrentCallConv() == CallConvName.SystemV) */
             {
@@ -85,35 +87,35 @@ namespace ARMeilleure.CodeGen.X86
             return 8;
         }
 
-        public static X86Register GetIntArgumentRegister(int index)
+        public static AsmRegister GetIntArgumentRegister(int index)
         {
             if (GetCurrentCallConv() == CallConvName.Windows)
             {
                 switch (index)
                 {
-                    case 0: return X86Register.Rcx;
-                    case 1: return X86Register.Rdx;
-                    case 2: return X86Register.R8;
-                    case 3: return X86Register.R9;
+                    case 0: return AsmRegister.C;
+                    case 1: return AsmRegister.D;
+                    case 2: return AsmRegister.R8;
+                    case 3: return AsmRegister.R9;
                 }
             }
             else /* if (GetCurrentCallConv() == CallConvName.SystemV) */
             {
                 switch (index)
                 {
-                    case 0: return X86Register.Rdi;
-                    case 1: return X86Register.Rsi;
-                    case 2: return X86Register.Rdx;
-                    case 3: return X86Register.Rcx;
-                    case 4: return X86Register.R8;
-                    case 5: return X86Register.R9;
+                    case 0: return AsmRegister.Di;
+                    case 1: return AsmRegister.Si;
+                    case 2: return AsmRegister.D;
+                    case 3: return AsmRegister.C;
+                    case 4: return AsmRegister.R8;
+                    case 5: return AsmRegister.R9;
                 }
             }
 
             throw new ArgumentOutOfRangeException(nameof(index));
         }
 
-        public static X86Register GetVecArgumentRegister(int index)
+        public static AsmRegister GetVecArgumentRegister(int index)
         {
             int count;
 
@@ -128,25 +130,25 @@ namespace ARMeilleure.CodeGen.X86
 
             if ((uint)index < count)
             {
-                return X86Register.Xmm0 + index;
+                return (AsmRegister)((int)AsmRegister.Xmm0 + index);
             }
 
             throw new ArgumentOutOfRangeException(nameof(index));
         }
 
-        public static X86Register GetIntReturnRegister()
+        public static AsmRegister GetIntReturnRegister()
         {
-            return X86Register.Rax;
+            return AsmRegister.A;
         }
 
-        public static X86Register GetIntReturnRegisterHigh()
+        public static AsmRegister GetIntReturnRegisterHigh()
         {
-            return X86Register.Rdx;
+            return AsmRegister.D;
         }
 
-        public static X86Register GetVecReturnRegister()
+        public static AsmRegister GetVecReturnRegister()
         {
-            return X86Register.Xmm0;
+            return AsmRegister.Xmm0;
         }
 
         public static CallConvName GetCurrentCallConv()

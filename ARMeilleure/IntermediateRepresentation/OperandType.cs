@@ -14,6 +14,17 @@ namespace ARMeilleure.IntermediateRepresentation
 
     static class OperandTypeExtensions
     {
+        public static RyuASM.X64.OperandType ToAssemblerType(this OperandType type) => type switch
+        {
+            OperandType.None => RyuASM.X64.OperandType.None,
+            OperandType.I32 => RyuASM.X64.OperandType.Integer32,
+            OperandType.I64 => RyuASM.X64.OperandType.Integer64,
+            OperandType.FP32 => RyuASM.X64.OperandType.Float32,
+            OperandType.FP64 => RyuASM.X64.OperandType.Float64,
+            OperandType.V128 => RyuASM.X64.OperandType.Vector128,
+            _ => throw new NotImplementedException($"Operand Type {type} unimplemented")
+        };
+
         public static bool IsInteger(this OperandType type)
         {
             return type == OperandType.I32 ||

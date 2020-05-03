@@ -5,6 +5,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 
+using AsmAssembler = RyuASM.X64.Assembler;
+using AsmCondition = RyuASM.X64.Condition;
+
 namespace ARMeilleure.CodeGen.X86
 {
     class CodeGenContext
@@ -17,7 +20,7 @@ namespace ARMeilleure.CodeGen.X86
 
         public AllocationResult AllocResult { get; }
 
-        public Assembler Assembler { get; }
+        public AsmAssembler Assembler { get; }
 
         public BasicBlock CurrBlock { get; private set; }
 
@@ -30,7 +33,7 @@ namespace ARMeilleure.CodeGen.X86
         {
             public bool IsConditional { get; }
 
-            public X86Condition Condition { get; }
+            public AsmCondition Condition { get; }
 
             public BasicBlock Target { get; }
 
@@ -52,7 +55,7 @@ namespace ARMeilleure.CodeGen.X86
                 InstSize = 0;
             }
 
-            public Jump(X86Condition condition, BasicBlock target, long jumpPosition)
+            public Jump(AsmCondition condition, BasicBlock target, long jumpPosition)
             {
                 IsConditional = true;
                 Condition     = condition;
@@ -67,10 +70,15 @@ namespace ARMeilleure.CodeGen.X86
 
         private List<Jump> _jumps;
 
-        private X86Condition _jNearCondition;
+        private AsmCondition _jNearCondition;
 
         private long _jNearPosition;
         private int  _jNearLength;
+
+        private readonly struct AsmCapabilities : RyuASM.X64.ICapabilities
+        {
+            public bool VexEncoding => HardwareCapabilities.SupportsVexEncoding;
+        }
 
         public CodeGenContext(Stream stream, AllocationResult allocResult, int maxCallArgs, int blocksCount)
         {
@@ -78,7 +86,7 @@ namespace ARMeilleure.CodeGen.X86
 
             AllocResult = allocResult;
 
-            Assembler = new Assembler(stream);
+            Assembler = new AsmAssembler(stream, new AsmCapabilities());
 
             CallArgsRegionSize = GetCallArgsRegionSize(allocResult, maxCallArgs, out int xmmSaveRegionSize);
             XmmSaveRegionSize  = xmmSaveRegionSize;
@@ -141,18 +149,18 @@ namespace ARMeilleure.CodeGen.X86
             WritePadding(ReservedBytesForJump);
         }
 
-        public void JumpTo(X86Condition condition, BasicBlock target)
+        public void JumpTo(AsmCondition condition, BasicBlock target)
         {
             _jumps.Add(new Jump(condition, target, _stream.Position));
 
             WritePadding(ReservedBytesForJump);
         }
 
-        public void JumpToNear(X86Condition condition)
+        public void JumpToNear(AsmCondition condition)
         {
             _jNearCondition = condition;
             _jNearPosition  = _stream.Position;
-            _jNearLength    = Assembler.GetJccLength(0);
+            _jNearLength    = AsmAssembler.GetJccLength(0);
 
             _stream.Seek(_jNearLength, SeekOrigin.Current);
         }
@@ -165,7 +173,7 @@ namespace ARMeilleure.CodeGen.X86
 
             long offset = currentPosition - (_jNearPosition + _jNearLength);
 
-            Debug.Assert(_jNearLength == Assembler.GetJccLength(offset), "Relative offset doesn't fit on near jump.");
+            Debug.Assert(_jNearLength == AsmAssembler.GetJccLength(offset), "Relative offset doesn't fit on near jump.");
 
             Assembler.Jcc(_jNearCondition, offset);
 
@@ -230,11 +238,11 @@ namespace ARMeilleure.CodeGen.X86
 
                     if (jump.IsConditional)
                     {
-                        jump.InstSize = Assembler.GetJccLength(offset);
+                        jump.InstSize = AsmAssembler.GetJccLength(offset);
                     }
                     else
                     {
-                        jump.InstSize = Assembler.GetJmpLength(offset);
+                        jump.InstSize = AsmAssembler.GetJmpLength(offset);
                     }
 
                     // The jump is relative to the next instruction, not the current one.
@@ -267,7 +275,7 @@ namespace ARMeilleure.CodeGen.X86
 
             using (MemoryStream codeStream = new MemoryStream())
             {
-                Assembler assembler = new Assembler(codeStream);
+                var assembler = new AsmAssembler(codeStream, new AsmCapabilities());
 
                 byte[] buffer;
 

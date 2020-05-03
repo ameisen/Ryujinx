@@ -8,6 +8,8 @@ using System.Diagnostics;
 using static ARMeilleure.IntermediateRepresentation.OperandHelper;
 using static ARMeilleure.IntermediateRepresentation.OperationHelper;
 
+using AsmRegister = RyuASM.X64.Register;
+
 namespace ARMeilleure.CodeGen.X86
 {
     static class PreAllocator
@@ -222,10 +224,10 @@ namespace ARMeilleure.CodeGen.X86
                             nodes.AddBefore(node, Operation(Instruction.VectorExtract, hr, source, Const(1)));
                         }
 
-                        Operand rax = Gpr(X86Register.Rax, OperandType.I64);
-                        Operand rbx = Gpr(X86Register.Rbx, OperandType.I64);
-                        Operand rcx = Gpr(X86Register.Rcx, OperandType.I64);
-                        Operand rdx = Gpr(X86Register.Rdx, OperandType.I64);
+                        Operand rax = Gpr(AsmRegister.A, OperandType.I64);
+                        Operand rbx = Gpr(AsmRegister.B, OperandType.I64);
+                        Operand rcx = Gpr(AsmRegister.C, OperandType.I64);
+                        Operand rdx = Gpr(AsmRegister.D, OperandType.I64);
 
                         SplitOperand(operation.GetSource(1), rax, rdx);
                         SplitOperand(operation.GetSource(2), rbx, rcx);
@@ -245,7 +247,7 @@ namespace ARMeilleure.CodeGen.X86
                         Operand expected = operation.GetSource(1);
                         Operand newValue = operation.GetSource(2);
 
-                        Operand rax = Gpr(X86Register.Rax, expected.Type);
+                        Operand rax = Gpr(AsmRegister.A, expected.Type);
 
                         nodes.AddBefore(node, Operation(Instruction.Copy, rax, expected));
 
@@ -273,10 +275,10 @@ namespace ARMeilleure.CodeGen.X86
                     // - The information is written to registers EAX, EBX, ECX and EDX.
                     Debug.Assert(dest.Type == OperandType.I64);
 
-                    Operand eax = Gpr(X86Register.Rax, OperandType.I32);
-                    Operand ebx = Gpr(X86Register.Rbx, OperandType.I32);
-                    Operand ecx = Gpr(X86Register.Rcx, OperandType.I32);
-                    Operand edx = Gpr(X86Register.Rdx, OperandType.I32);
+                    Operand eax = Gpr(AsmRegister.A, OperandType.I32);
+                    Operand ebx = Gpr(AsmRegister.B, OperandType.I32);
+                    Operand ecx = Gpr(AsmRegister.C, OperandType.I32);
+                    Operand edx = Gpr(AsmRegister.D, OperandType.I32);
 
                     // Value 0x01 = Version, family and feature information.
                     nodes.AddBefore(node, Operation(Instruction.Copy, eax, Const(1)));
@@ -284,7 +286,7 @@ namespace ARMeilleure.CodeGen.X86
                     // Copy results to the destination register.
                     // The values are split into 2 32-bits registers, we merge them
                     // into a single 64-bits register.
-                    Operand rcx = Gpr(X86Register.Rcx, OperandType.I64);
+                    Operand rcx = Gpr(AsmRegister.C, OperandType.I64);
 
                     node = nodes.AddAfter(node, Operation(Instruction.ZeroExtend32, dest, edx));
                     node = nodes.AddAfter(node, Operation(Instruction.ShiftLeft,    dest, dest, Const(32)));
@@ -308,8 +310,8 @@ namespace ARMeilleure.CodeGen.X86
                     {
                         Operand src1 = operation.GetSource(0);
 
-                        Operand rax = Gpr(X86Register.Rax, src1.Type);
-                        Operand rdx = Gpr(X86Register.Rdx, src1.Type);
+                        Operand rax = Gpr(AsmRegister.A, src1.Type);
+                        Operand rdx = Gpr(AsmRegister.D, src1.Type);
 
                         nodes.AddBefore(node, Operation(Instruction.Copy,    rax, src1));
                         nodes.AddBefore(node, Operation(Instruction.Clobber, rdx));
@@ -336,7 +338,7 @@ namespace ARMeilleure.CodeGen.X86
                          intrinOp.Intrinsic == Intrinsic.X86Pblendvb) &&
                          !HardwareCapabilities.SupportsVexEncoding)
                     {
-                        Operand xmm0 = Xmm(X86Register.Xmm0, OperandType.V128);
+                        Operand xmm0 = Xmm(AsmRegister.Xmm0, OperandType.V128);
 
                         nodes.AddBefore(node, Operation(Instruction.Copy, xmm0, operation.GetSource(2)));
 
@@ -355,8 +357,8 @@ namespace ARMeilleure.CodeGen.X86
                     // - The higher 64-bits of the result is always in RDX.
                     Operand src1 = operation.GetSource(0);
 
-                    Operand rax = Gpr(X86Register.Rax, src1.Type);
-                    Operand rdx = Gpr(X86Register.Rdx, src1.Type);
+                    Operand rax = Gpr(AsmRegister.A, src1.Type);
+                    Operand rdx = Gpr(AsmRegister.D, src1.Type);
 
                     nodes.AddBefore(node, Operation(Instruction.Copy, rax, src1));
 
@@ -377,7 +379,7 @@ namespace ARMeilleure.CodeGen.X86
                     // The shift register is always implied to be CL (low 8-bits of RCX or ECX).
                     if (operation.GetSource(1).Kind == OperandKind.LocalVariable)
                     {
-                        Operand rcx = Gpr(X86Register.Rcx, OperandType.I32);
+                        Operand rcx = Gpr(AsmRegister.C, OperandType.I32);
 
                         nodes.AddBefore(node, Operation(Instruction.Copy, rcx, operation.GetSource(1)));
 
@@ -1288,12 +1290,12 @@ namespace ARMeilleure.CodeGen.X86
             nodes.Remove(node);
         }
 
-        private static Operand Gpr(X86Register register, OperandType type)
+        private static Operand Gpr(AsmRegister register, OperandType type)
         {
             return Register((int)register, RegisterType.Integer, type);
         }
 
-        private static Operand Xmm(X86Register register, OperandType type)
+        private static Operand Xmm(AsmRegister register, OperandType type)
         {
             return Register((int)register, RegisterType.Vector, type);
         }

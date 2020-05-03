@@ -1,11 +1,13 @@
+using AsmInstruction = RyuASM.X64.Instruction;
+
 namespace ARMeilleure.CodeGen.X86
 {
     struct IntrinsicInfo
     {
-        public X86Instruction Inst { get; }
-        public IntrinsicType  Type { get; }
+        public AsmInstruction Inst { get; }
+        public IntrinsicType Type { get; }
 
-        public IntrinsicInfo(X86Instruction inst, IntrinsicType type)
+        public IntrinsicInfo(AsmInstruction inst, IntrinsicType type)
         {
             Inst = inst;
             Type = type;
