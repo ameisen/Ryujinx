@@ -66,7 +66,7 @@ namespace RyuASM.X64
 
         public void Cmovcc(IOperand dest, IOperand source, OperandType type, Condition condition)
         {
-            ref var info = ref InstructionTable.Get(Instruction.Cmovcc);
+            ref var info = ref Instruction.Cmovcc.GetInfo();
 
             WriteOpCode(dest, null, source, type, info.Flags, info.OpRRM | (uint)condition, rrm: true);
         }
@@ -168,7 +168,7 @@ namespace RyuASM.X64
 
         public void Imul(IOperand dest, IOperand src1, IOperand src2, OperandType type)
         {
-            ref var info = ref InstructionTable.Get(Instruction.Imul);
+            ref var info = ref Instruction.Imul.GetInfo();
 
             if (!src2.IsConstant)
             {
@@ -268,7 +268,7 @@ namespace RyuASM.X64
 
         public void Movd(IOperand dest, IOperand source)
         {
-            ref var info = ref InstructionTable.Get(Instruction.Movd);
+            ref var info = ref Instruction.Movd.GetInfo();
 
             if (source.Type.IsIntegral() || source.IsMemory)
             {
@@ -297,7 +297,7 @@ namespace RyuASM.X64
 
         public void Movq(IOperand dest, IOperand source)
         {
-            ref var info = ref InstructionTable.Get(Instruction.Movd);
+            ref var info = ref Instruction.Movd.GetInfo();
 
             var flags = info.Flags | InstructionFlags.RexW;
 
@@ -504,7 +504,7 @@ namespace RyuASM.X64
 
         public void Setcc(IOperand dest, Condition condition)
         {
-            ref var info = ref InstructionTable.Get(Instruction.Setcc);
+            ref var info = ref Instruction.Setcc.GetInfo();
 
             WriteOpCode(dest, null, null, OperandType.None, info.Flags, info.OpRRM | (uint)condition);
         }
@@ -623,7 +623,7 @@ namespace RyuASM.X64
 
         private void WriteInstruction(IOperand dest, IOperand source, OperandType type, Instruction inst)
         {
-            ref var info = ref InstructionTable.Get(inst);
+            ref var info = ref inst.GetInfo();
 
             if (source != null)
             {
@@ -707,7 +707,7 @@ namespace RyuASM.X64
             Instruction inst,
             OperandType type = OperandType.None)
         {
-            ref var info = ref InstructionTable.Get(inst);
+            ref var info = ref inst.GetInfo();
 
             if (src2 != null)
             {

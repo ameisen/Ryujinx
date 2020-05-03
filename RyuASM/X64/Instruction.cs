@@ -1,4 +1,7 @@
-﻿namespace RyuASM.X64
+﻿using RyuASM.Common;
+using System.Runtime.CompilerServices;
+
+namespace RyuASM.X64
 {
     public enum Instruction
     {
@@ -200,5 +203,11 @@
         Xorps,
 
         Count
+    }
+
+    internal static class InstructionExtensions
+    {
+        [MethodImpl(MethodFlags.FullInline)]
+        public static ref InstructionTable.InstructionInfo GetInfo(this Instruction instruction) => ref InstructionTable.Get(instruction);
     }
 }
