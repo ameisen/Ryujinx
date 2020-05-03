@@ -3,15 +3,11 @@ using OpenTK;
 using OpenTK.Graphics;
 using OpenTK.Graphics.OpenGL;
 using OpenTK.Input;
-using OpenTK.Platform;
 using Ryujinx.Configuration;
 using Ryujinx.Graphics.OpenGL;
 using Ryujinx.HLE;
 using Ryujinx.HLE.HOS.Services.Hid;
-using Ryujinx.Ui;
 using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 
 namespace Ryujinx.Ui
@@ -78,6 +74,17 @@ namespace Ryujinx.Ui
                           | Gdk.EventMask.KeyReleaseMask));
 
             this.Shown += Renderer_Shown;
+
+            try
+            {
+                NvAPIWrapper.NVIDIA.Initialize();
+                var session = NvAPIWrapper.DRS.DriverSettingsSession.CreateAndLoad();
+                var profile = session.BaseProfile;
+                profile.SetSetting(NvAPIWrapper.DRS.KnownSettingId.VSyncMode, (uint)NvAPIWrapper.DRS.SettingValues.VSyncMode.Virtual);
+
+                //NvAPIWrapper.DRS.SettingValues.D3DOpenGLGPUMaximumPower.
+            }
+            catch (Exception) { }
         }
 
         private static GraphicsMode GetGraphicsMode()
