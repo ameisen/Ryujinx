@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace RyuASM.X64
 {
@@ -11,17 +12,25 @@ namespace RyuASM.X64
         private const uint BadOp = InstructionTable.BadOp;
         private const int OpModRMBits = 24;
 
-        private const byte RexPrefix = 0x40;
-        private const byte RexWPrefix = 0x48;
-        private const byte LockPrefix = 0xf0;
+        private static class Prefix
+        {
+            public const byte Rex = 0x40;
+            public const byte RexW = 0x48;
+            public const byte Lock = 0xf0;
+        }
 
-        private readonly Stream OutStream;
+        private readonly BinaryWriter OutStream;
         private readonly ICapabilities Capabilities;
 
         public Assembler([NotNull] Stream stream, [NotNull] ICapabilities capabilities)
         {
-            OutStream = stream;
+            OutStream = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
             Capabilities = capabilities;
+        }
+
+        ~Assembler()
+        {
+            OutStream?.Dispose();
         }
 
         public void Add(IOperand dest, IOperand source, OperandType type)
@@ -61,7 +70,7 @@ namespace RyuASM.X64
 
         public void Cdq()
         {
-            WriteByte(0x99);
+            EmitByte(0x99);
         }
 
         public void Cmovcc(IOperand dest, IOperand source, OperandType type, Condition condition)
@@ -78,20 +87,20 @@ namespace RyuASM.X64
 
         public void Cqo()
         {
-            WriteByte(0x48);
-            WriteByte(0x99);
+            EmitByte(0x48);
+            EmitByte(0x99);
         }
 
         public void Cmpxchg(IMemoryOperand memOp, IOperand src)
         {
-            WriteByte(LockPrefix);
+            EmitByte(Prefix.Lock);
 
             WriteInstruction(memOp, src, src.Type, Instruction.Cmpxchg);
         }
 
         public void Cmpxchg16b(IMemoryOperand memOp)
         {
-            WriteByte(LockPrefix);
+            EmitByte(Prefix.Lock);
 
             WriteInstruction(memOp, null, OperandType.None, Instruction.Cmpxchg16b);
         }
@@ -179,13 +188,13 @@ namespace RyuASM.X64
             {
                 WriteOpCode(dest, null, src1, type, info.Flags, info.OpRMImm8, rrm: true);
 
-                WriteByte(src2.AsByte);
+                EmitByte(src2.AsByte);
             }
             else if (IsImm32(src2.Value, src2.Type) && info.OpRMImm32 != BadOp)
             {
                 WriteOpCode(dest, null, src1, type, info.Flags, info.OpRMImm32, rrm: true);
 
-                WriteInt32(src2.AsInt32);
+                EmitDWord(src2.AsInt32);
             }
             else
             {
@@ -197,23 +206,23 @@ namespace RyuASM.X64
         {
             WriteInstruction(dest, src1, src2, Instruction.Insertps);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         public void Jcc(Condition condition, long offset)
         {
             if (ConstFitsOnS8(offset))
             {
-                WriteByte((byte)(0x70 | (int)condition));
+                EmitByte((byte)(0x70 | (int)condition));
 
-                WriteByte((byte)offset);
+                EmitByte((byte)offset);
             }
             else if (ConstFitsOnS32(offset))
             {
-                WriteByte(0x0f);
-                WriteByte((byte)(0x80 | (int)condition));
+                EmitByte(0x0f);
+                EmitByte((byte)(0x80 | (int)condition));
 
-                WriteInt32((int)offset);
+                EmitDWord((int)offset);
             }
             else
             {
@@ -225,15 +234,15 @@ namespace RyuASM.X64
         {
             if (ConstFitsOnS8(offset))
             {
-                WriteByte(0xeb);
+                EmitByte(0xeb);
 
-                WriteByte((byte)offset);
+                EmitByte((byte)offset);
             }
             else if (ConstFitsOnS32(offset))
             {
-                WriteByte(0xe9);
+                EmitByte(0xe9);
 
-                WriteInt32((int)offset);
+                EmitDWord((int)offset);
             }
             else
             {
@@ -389,56 +398,56 @@ namespace RyuASM.X64
         {
             WriteInstruction(dest, null, source, Instruction.Pextrb);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         public void Pextrd(IOperand dest, IOperand source, byte imm)
         {
             WriteInstruction(dest, null, source, Instruction.Pextrd);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         public void Pextrq(IOperand dest, IOperand source, byte imm)
         {
             WriteInstruction(dest, null, source, Instruction.Pextrq);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         public void Pextrw(IOperand dest, IOperand source, byte imm)
         {
             WriteInstruction(dest, null, source, Instruction.Pextrw);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         public void Pinsrb(IOperand dest, IOperand src1, IOperand src2, byte imm)
         {
             WriteInstruction(dest, src1, src2, Instruction.Pinsrb);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         public void Pinsrd(IOperand dest, IOperand src1, IOperand src2, byte imm)
         {
             WriteInstruction(dest, src1, src2, Instruction.Pinsrd);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         public void Pinsrq(IOperand dest, IOperand src1, IOperand src2, byte imm)
         {
             WriteInstruction(dest, src1, src2, Instruction.Pinsrq);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         public void Pinsrw(IOperand dest, IOperand src1, IOperand src2, byte imm)
         {
             WriteInstruction(dest, src1, src2, Instruction.Pinsrw);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         public void Pop(IOperand dest)
@@ -462,7 +471,7 @@ namespace RyuASM.X64
         {
             WriteInstruction(dest, null, source, Instruction.Pshufd);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         public void Push(IOperand source)
@@ -479,7 +488,7 @@ namespace RyuASM.X64
 
         public void Return()
         {
-            WriteByte(0xc3);
+            EmitByte(0xc3);
         }
 
         public void Ror(IOperand dest, IOperand source, OperandType type)
@@ -574,7 +583,7 @@ namespace RyuASM.X64
         {
             WriteInstruction(dest, null, source, inst);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         public void WriteInstruction(
@@ -589,7 +598,7 @@ namespace RyuASM.X64
 
             WriteInstruction(dest, src1, src2, inst);
 
-            WriteByte((byte)(src3.AsByte << 4));
+            EmitByte((byte)(src3.AsByte << 4));
         }
 
         public void WriteInstruction(
@@ -601,7 +610,7 @@ namespace RyuASM.X64
         {
             WriteInstruction(dest, src1, src2, inst);
 
-            WriteByte(imm);
+            EmitByte(imm);
         }
 
         private void WriteShiftInst(IOperand dest, IOperand source, OperandType type, Instruction inst)
@@ -635,25 +644,25 @@ namespace RyuASM.X64
                     {
                         WriteOpCode(dest, null, null, type, info.Flags, info.OpRMImm8);
 
-                        WriteByte((byte)imm);
+                        EmitByte((byte)imm);
                     }
                     else if (inst == Instruction.Mov16)
                     {
                         WriteOpCode(dest, null, null, type, info.Flags, info.OpRMImm32);
 
-                        WriteInt16((short)imm);
+                        EmitWord((short)imm);
                     }
                     else if (IsImm8(imm, type) && info.OpRMImm8 != BadOp)
                     {
                         WriteOpCode(dest, null, null, type, info.Flags, info.OpRMImm8);
 
-                        WriteByte((byte)imm);
+                        EmitByte((byte)imm);
                     }
                     else if (IsImm32(imm, type) && info.OpRMImm32 != BadOp)
                     {
                         WriteOpCode(dest, null, null, type, info.Flags, info.OpRMImm32);
 
-                        WriteInt32((int)imm);
+                        EmitDWord((int)imm);
                     }
                     else if (dest?.IsRegister == true && info.OpRImm64 != BadOp)
                     {
@@ -661,12 +670,12 @@ namespace RyuASM.X64
 
                         if (rexPrefix != 0)
                         {
-                            WriteByte((byte)rexPrefix);
+                            EmitByte((byte)rexPrefix);
                         }
 
-                        WriteByte((byte)(info.OpRImm64 + (dest.RegisterIndex & 0b111)));
+                        EmitByte((byte)(info.OpRImm64 + (dest.RegisterIndex & 0b111)));
 
-                        WriteUInt64(imm);
+                        EmitQWord(imm);
                     }
                     else
                     {
@@ -719,7 +728,7 @@ namespace RyuASM.X64
                     {
                         WriteOpCode(dest, src1, null, type, info.Flags, info.OpRMImm8);
 
-                        WriteByte((byte)imm);
+                        EmitByte((byte)imm);
                     }
                     else
                     {
@@ -766,7 +775,7 @@ namespace RyuASM.X64
 
             if ((flags & InstructionFlags.RexW) != 0)
             {
-                rexPrefix |= RexWPrefix;
+                rexPrefix |= Prefix.RexW;
             }
 
             uint modRM = (opCode >> OpModRMBits) << 3;
@@ -783,7 +792,7 @@ namespace RyuASM.X64
 
                     if ((flags & InstructionFlags.Reg8Dest) != 0 && regIndex >= (uint)Register.R4)
                     {
-                        rexPrefix |= RexPrefix;
+                        rexPrefix |= Prefix.Rex;
                     }
                 }
                 else if (dest.IsMemory)
@@ -806,7 +815,7 @@ namespace RyuASM.X64
 
                     if ((flags & InstructionFlags.Reg8Src) != 0 && regIndex >= 4)
                     {
-                        rexPrefix |= RexPrefix;
+                        rexPrefix |= Prefix.Rex;
                     }
                 }
                 else if (src2.IsMemory && memOp == null)
@@ -850,7 +859,7 @@ namespace RyuASM.X64
                 {
                     Debug.Assert(baseReg <= Register.RMax);
 
-                    rexPrefix |= RexPrefix | ((uint)baseReg >> 3);
+                    rexPrefix |= Prefix.Rex | ((uint)baseReg >> 3);
                 }
 
                 if (needsSibByte)
@@ -867,7 +876,7 @@ namespace RyuASM.X64
                         {
                             Debug.Assert(indexReg <= Register.RMax);
 
-                            rexPrefix |= RexPrefix | ((uint)indexReg >> 3) << 1;
+                            rexPrefix |= Prefix.Rex | ((uint)indexReg >> 3) << 1;
                         }
 
                         sib |= ((uint)indexReg & 0b111) << 3;
@@ -912,16 +921,16 @@ namespace RyuASM.X64
                 if ((rexPrefix & 0b1011) == 0 && opCodeHigh == 0xf)
                 {
                     // Two-byte form.
-                    WriteByte(0xc5);
+                    EmitByte(0xc5);
 
                     vexByte2 |= (~rexPrefix & 4) << 5;
 
-                    WriteByte((byte)vexByte2);
+                    EmitByte((byte)vexByte2);
                 }
                 else
                 {
                     // Three-byte form.
-                    WriteByte(0xc4);
+                    EmitByte(0xc4);
 
                     uint vexByte1 = (~rexPrefix & 7) << 5;
 
@@ -936,8 +945,8 @@ namespace RyuASM.X64
 
                     vexByte2 |= (rexPrefix & 8) << 4;
 
-                    WriteByte((byte)vexByte1);
-                    WriteByte((byte)vexByte2);
+                    EmitByte((byte)vexByte1);
+                    EmitByte((byte)vexByte2);
                 }
 
                 opCode &= 0xff;
@@ -946,14 +955,14 @@ namespace RyuASM.X64
             {
                 switch (flags & InstructionFlags.PrefixMask)
                 {
-                    case InstructionFlags.Prefix66: WriteByte(0x66); break;
-                    case InstructionFlags.PrefixF2: WriteByte(0xf2); break;
-                    case InstructionFlags.PrefixF3: WriteByte(0xf3); break;
+                    case InstructionFlags.Prefix66: EmitByte(0x66); break;
+                    case InstructionFlags.PrefixF2: EmitByte(0xf2); break;
+                    case InstructionFlags.PrefixF3: EmitByte(0xf3); break;
                 }
 
                 if (rexPrefix != 0)
                 {
-                    WriteByte((byte)rexPrefix);
+                    EmitByte((byte)rexPrefix);
                 }
             }
 
@@ -964,34 +973,34 @@ namespace RyuASM.X64
 
             if ((opCode & 0xff0000) != 0)
             {
-                WriteByte((byte)(opCode >> 16));
+                EmitByte((byte)(opCode >> 16));
             }
 
             if ((opCode & 0xff00) != 0)
             {
-                WriteByte((byte)(opCode >> 8));
+                EmitByte((byte)(opCode >> 8));
             }
 
-            WriteByte((byte)opCode);
+            EmitByte((byte)opCode);
 
             if ((flags & InstructionFlags.RegCoded) == 0)
             {
-                WriteByte((byte)modRM);
+                EmitByte((byte)modRM);
 
                 if (needsSibByte)
                 {
-                    WriteByte((byte)sib);
+                    EmitByte((byte)sib);
                 }
 
                 if (needsDisplacement)
                 {
                     if (ConstFitsOnS8(memOp.Displacement))
                     {
-                        WriteByte((byte)memOp.Displacement);
+                        EmitByte((byte)memOp.Displacement);
                     }
                     else /* if (ConstFitsOnS32(memOp.Displacement)) */
                     {
-                        WriteInt32(memOp.Displacement);
+                        EmitDWord(memOp.Displacement);
                     }
                 }
             }
@@ -1003,10 +1012,10 @@ namespace RyuASM.X64
 
             if (regIndex >= (uint)Register.R8)
             {
-                WriteByte(0x41);
+                EmitByte(0x41);
             }
 
-            WriteByte((byte)(opCode + (regIndex & 0b111)));
+            EmitByte((byte)(opCode + (regIndex & 0b111)));
         }
 
         private static uint GetRexPrefix(IOperand dest, IOperand source, OperandType type, bool rrm)
@@ -1015,14 +1024,14 @@ namespace RyuASM.X64
 
             if (Is64Bits(type))
             {
-                rexPrefix = RexWPrefix;
+                rexPrefix = Prefix.RexW;
             }
 
             void SetRegisterHighBit(Register reg, int bit)
             {
                 if (reg >= Register.R8)
                 {
-                    rexPrefix |= RexPrefix | ((uint)reg >> 3) << bit;
+                    rexPrefix |= Prefix.Rex | ((uint)reg >> 3) << bit;
                 }
             }
 
@@ -1094,20 +1103,23 @@ namespace RyuASM.X64
 
         private static bool ConstFitsOnS32(long value) => value == (int)value;
 
-        private void WriteInt16(short value) => WriteUInt16((ushort)value);
+        public void EmitByte(byte value) => OutStream.Write(value);
+        public void EmitByte(sbyte value) => OutStream.Write(value);
 
-        private void WriteInt32(int value) => WriteUInt32((uint)value);
+        public void EmitWord(ushort value) => OutStream.Write(value);
+        public void EmitWord(short value) => OutStream.Write(value);
 
-        private void WriteByte(byte value) => OutStream.WriteByte(value);
+        public void EmitDWord(uint value) => OutStream.Write(value);
+        public void EmitDWord(int value) => OutStream.Write(value);
 
-        private static unsafe ReadOnlySpan<byte> GetSpan<T>(T value) where T : unmanaged {
-            return new ReadOnlySpan<byte>(Unsafe.AsPointer(ref value), sizeof(T));
+        public void EmitQWord(ulong value) => OutStream.Write(value);
+        public void EmitQWord(long value) => OutStream.Write(value);
+
+        private static unsafe ReadOnlySpan<byte> GetSpan<T>(in T value) where T : unmanaged
+        {
+            return new ReadOnlySpan<byte>(Unsafe.AsPointer(ref Unsafe.AsRef(in value)), sizeof(T));
         }
 
-        private void WriteUInt16(ushort value) => OutStream.Write(GetSpan(value));
-
-        private void WriteUInt32(uint value) => OutStream.Write(GetSpan(value));
-
-        private void WriteUInt64(ulong value) => OutStream.Write(GetSpan(value));
+        public void Emit<T>(in T value) where T : unmanaged => OutStream.Write(GetSpan(in value));
     }
 }
