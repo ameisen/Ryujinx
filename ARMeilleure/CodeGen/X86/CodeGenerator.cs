@@ -162,29 +162,27 @@ namespace ARMeilleure.CodeGen.X86
 
             Logger.StartPass(PassName.CodeGeneration);
 
-            using (MemoryStream stream = new MemoryStream())
+            using var stream = new MemoryStream();
+            using var context = new CodeGenContext(stream, allocResult, maxCallArgs, cfg.Blocks.Count);
+
+            UnwindInfo unwindInfo = WritePrologue(context);
+
+            for (BasicBlock block = cfg.Blocks.First; block != null; block = block.ListNext)
             {
-                CodeGenContext context = new CodeGenContext(stream, allocResult, maxCallArgs, cfg.Blocks.Count);
+                context.EnterBlock(block);
 
-                UnwindInfo unwindInfo = WritePrologue(context);
-
-                for (BasicBlock block = cfg.Blocks.First; block != null; block = block.ListNext)
+                for (Node node = block.Operations.First; node != null; node = node.ListNext)
                 {
-                    context.EnterBlock(block);
-
-                    for (Node node = block.Operations.First; node != null; node = node.ListNext)
+                    if (node is Operation operation)
                     {
-                        if (node is Operation operation)
-                        {
-                            GenerateOperation(context, operation);
-                        }
+                        GenerateOperation(context, operation);
                     }
                 }
-
-                Logger.EndPass(PassName.CodeGeneration);
-
-                return new CompiledFunction(context.GetCode(), unwindInfo);
             }
+
+            Logger.EndPass(PassName.CodeGeneration);
+
+            return new CompiledFunction(context.GetCode(), unwindInfo);
         }
 
         private static void GenerateOperation(CodeGenContext context, Operation operation)

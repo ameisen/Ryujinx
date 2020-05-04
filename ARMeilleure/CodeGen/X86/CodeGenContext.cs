@@ -1,6 +1,7 @@
 using ARMeilleure.CodeGen.RegisterAllocators;
 using ARMeilleure.Common;
 using ARMeilleure.IntermediateRepresentation;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -10,7 +11,7 @@ using AsmCondition = RyuASM.X64.Condition;
 
 namespace ARMeilleure.CodeGen.X86
 {
-    class CodeGenContext
+    class CodeGenContext : IDisposable
     {
         private const int ReservedBytesForJump = 1;
 
@@ -308,6 +309,11 @@ namespace ARMeilleure.CodeGen.X86
 
                 return codeStream.ToArray();
             }
+        }
+
+        public void Dispose()
+        {
+            Assembler?.Dispose();
         }
     }
 }

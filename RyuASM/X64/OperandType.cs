@@ -7,6 +7,7 @@ namespace RyuASM.X64
     {
         None,
 
+        Integer16,
         Integer32,
         Integer64,
 
@@ -20,7 +21,7 @@ namespace RyuASM.X64
     {
         private static class Integral
         {
-            internal const OperandType Start = OperandType.Integer32;
+            internal const OperandType Start = OperandType.Integer16;
             internal const OperandType End = OperandType.Integer64;
 
             [MethodImpl(MethodFlags.FullInline)]
